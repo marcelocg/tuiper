@@ -1,0 +1,127 @@
+import { describe, expect, test } from "bun:test";
+import {
+  computeCells,
+  cursorRow,
+  visibleWindow,
+  wordWrap,
+  type CharCell,
+} from "../../src/engine/typing_view";
+import { createSession } from "../../src/engine/session_state";
+
+/** Compact a cell row into "<char><flag>" tokens for readable assertions. */
+function render(cells: CharCell[]): string {
+  const flag = { pending: ".", correct: "+", wrong: "!" } as const;
+  return cells
+    .map((c) => `${c.char}${flag[c.status]}${c.cursor ? "^" : ""}`)
+    .join(" ");
+}
+
+describe("computeCells", () => {
+  test("all pending before any input, cursor on the first cell", () => {
+    const cells = computeCells(createSession("ab"));
+    expect(render(cells)).toBe("a.^ b.");
+  });
+
+  test("correct vs wrong colors the EXPECTED char and advances the cursor", () => {
+    // target "cat", typed "cx" -> c correct, a wrong (shows expected 'a'), cursor on 't'
+    const cells = computeCells({ target: "cat", input: "cx", status: "active" });
+    expect(render(cells)).toBe("c+ a! t.^");
+  });
+
+  test("comparison is case-insensitive (NFC + lowercase)", () => {
+    const cells = computeCells({ target: "Ab", input: "aB", status: "active" });
+    expect(cells[0]!.status).toBe("correct");
+    expect(cells[1]!.status).toBe("correct");
+  });
+
+  test("a trailing block cursor appears once the excerpt is fully typed", () => {
+    const cells = computeCells({ target: "hi", input: "hi", status: "active" });
+    expect(cells).toHaveLength(3);
+    expect(cells[2]).toEqual({ char: " ", status: "pending", cursor: true });
+  });
+});
+
+describe("wordWrap", () => {
+  function cellsOf(text: string): CharCell[] {
+    return [...text].map((ch) => ({ char: ch, status: "pending", cursor: false }));
+  }
+  function text(lines: CharCell[][]): string[] {
+    return lines.map((l) => l.map((c) => c.char).join(""));
+  }
+
+  test("wraps on word boundaries without splitting words", () => {
+    expect(text(wordWrap(cellsOf("the quick brown fox"), 9))).toEqual([
+      "the quick",
+      "brown fox",
+    ]);
+  });
+
+  test("consumes the space at a wrap boundary (no leading spaces)", () => {
+    expect(text(wordWrap(cellsOf("aaa bbb ccc"), 7))).toEqual(["aaa bbb", "ccc"]);
+  });
+
+  test("hard-splits a word longer than the width", () => {
+    expect(text(wordWrap(cellsOf("abcdefgh"), 3))).toEqual(["abc", "def", "gh"]);
+  });
+
+  function cursorCount(lines: CharCell[][]): number {
+    return lines.reduce((n, l) => n + l.filter((c) => c.cursor).length, 0);
+  }
+
+  test("keeps an inter-word space that carries the cursor at a wrap boundary", () => {
+    // target "aaa bbb", typed "aaa": cursor sits on the space at column == width.
+    const cells = computeCells({ target: "aaa bbb", input: "aaa", status: "active" });
+    const lines = wordWrap(cells, 3);
+    expect(cursorCount(lines)).toBe(1); // the cursor is not dropped
+    expect(cursorRow(lines)).toBeGreaterThan(0); // and cursorRow is not the fallback 0
+  });
+
+  test("keeps the trailing block cursor when the last word fills the width", () => {
+    const cells = computeCells({ target: "abc", input: "abc", status: "active" });
+    const lines = wordWrap(cells, 3);
+    expect(cursorCount(lines)).toBe(1);
+    expect(cursorRow(lines)).toBe(1);
+  });
+
+  test("layout is independent of typed correctness", () => {
+    const target = "the quick brown fox";
+    const pending = wordWrap(computeCells({ target, input: "", status: "active" }), 9);
+    const typed = wordWrap(
+      computeCells({ target, input: "the quxck", status: "active" }),
+      9,
+    );
+    expect(text(typed)).toEqual(text(pending));
+  });
+});
+
+describe("cursorRow", () => {
+  test("finds the wrapped line holding the cursor", () => {
+    const cells = computeCells({
+      target: "the quick brown fox",
+      input: "the quick brown", // cursor at index 15 -> start of "fox" region
+      status: "active",
+    });
+    const lines = wordWrap(cells, 9);
+    // "the quick" / "brown fox" -> cursor sits on the second line
+    expect(cursorRow(lines)).toBe(1);
+  });
+});
+
+describe("visibleWindow", () => {
+  test("shows everything when it fits", () => {
+    expect(visibleWindow(3, 0, 10)).toEqual({ start: 0, end: 3 });
+  });
+
+  test("keeps the cursor line visible, biased to the bottom", () => {
+    // 20 lines, height 5, cursor on line 10 -> window [6,11)
+    expect(visibleWindow(20, 10, 5)).toEqual({ start: 6, end: 11 });
+  });
+
+  test("does not scroll past the end", () => {
+    expect(visibleWindow(20, 19, 5)).toEqual({ start: 15, end: 20 });
+  });
+
+  test("does not scroll before the start", () => {
+    expect(visibleWindow(20, 1, 5)).toEqual({ start: 0, end: 5 });
+  });
+});

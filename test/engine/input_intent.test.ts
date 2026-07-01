@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { mapKeyToCommand } from "../../src/engine/input_intent";
-import { createSession } from "../../src/engine/session_state";
+import { createSession, finish, start } from "../../src/engine/session_state";
 import { key } from "../support/key_event";
 
-const active = createSession("hello world");
+const ready = createSession("hello world");
+const active = start(ready, 1000); // timer started -> mid-run
+const finished = finish(active, 2000);
 
 describe("mapKeyToCommand — active run", () => {
   test("printable letter types itself", () => {
@@ -87,5 +89,63 @@ describe("mapKeyToCommand — active run", () => {
         active,
       ),
     ).toEqual({ kind: "none" });
+  });
+});
+
+describe("mapKeyToCommand — ready (before first keystroke)", () => {
+  test("1 / 2 / 3 select the 15 / 30 / 60-second duration", () => {
+    expect(mapKeyToCommand(key({ name: "1", sequence: "1" }), ready)).toEqual({
+      kind: "setDuration",
+      seconds: 15,
+    });
+    expect(mapKeyToCommand(key({ name: "2", sequence: "2" }), ready)).toEqual({
+      kind: "setDuration",
+      seconds: 30,
+    });
+    expect(mapKeyToCommand(key({ name: "3", sequence: "3" }), ready)).toEqual({
+      kind: "setDuration",
+      seconds: 60,
+    });
+  });
+
+  test("any other printable is the first keystroke — it types (and starts the run)", () => {
+    expect(mapKeyToCommand(key({ name: "h", sequence: "h" }), ready)).toEqual({
+      kind: "type",
+      char: "h",
+    });
+  });
+
+  test("Backspace before typing does nothing", () => {
+    expect(
+      mapKeyToCommand(key({ name: "backspace", sequence: "\x7f" }), ready),
+    ).toEqual({ kind: "none" });
+  });
+
+  test("Ctrl-C quits from the ready state", () => {
+    expect(
+      mapKeyToCommand(key({ name: "c", sequence: "\x03", ctrl: true }), ready),
+    ).toEqual({ kind: "quit" });
+  });
+});
+
+describe("mapKeyToCommand — finished", () => {
+  test("duration keys go dormant once the run is over (no restart yet)", () => {
+    // Changing duration post-run would only falsify the results banner; it
+    // returns when a restart action lands in a later slice.
+    expect(mapKeyToCommand(key({ name: "3", sequence: "3" }), finished)).toEqual({
+      kind: "none",
+    });
+  });
+
+  test("printables no longer type once the run is over", () => {
+    expect(mapKeyToCommand(key({ name: "h", sequence: "h" }), finished)).toEqual({
+      kind: "none",
+    });
+  });
+
+  test("Ctrl-C still quits from the finished state", () => {
+    expect(
+      mapKeyToCommand(key({ name: "c", sequence: "\x03", ctrl: true }), finished),
+    ).toEqual({ kind: "quit" });
   });
 });

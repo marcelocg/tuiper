@@ -24,18 +24,18 @@ describe("computeCells", () => {
 
   test("correct vs wrong colors the EXPECTED char and advances the cursor", () => {
     // target "cat", typed "cx" -> c correct, a wrong (shows expected 'a'), cursor on 't'
-    const cells = computeCells({ target: "cat", input: "cx", status: "active" });
+    const cells = computeCells({ target: "cat", input: "cx" });
     expect(render(cells)).toBe("c+ a! t.^");
   });
 
   test("comparison is case-insensitive (NFC + lowercase)", () => {
-    const cells = computeCells({ target: "Ab", input: "aB", status: "active" });
+    const cells = computeCells({ target: "Ab", input: "aB" });
     expect(cells[0]!.status).toBe("correct");
     expect(cells[1]!.status).toBe("correct");
   });
 
   test("a trailing block cursor appears once the excerpt is fully typed", () => {
-    const cells = computeCells({ target: "hi", input: "hi", status: "active" });
+    const cells = computeCells({ target: "hi", input: "hi" });
     expect(cells).toHaveLength(3);
     expect(cells[2]).toEqual({ char: " ", status: "pending", cursor: true });
   });
@@ -70,14 +70,14 @@ describe("wordWrap", () => {
 
   test("keeps an inter-word space that carries the cursor at a wrap boundary", () => {
     // target "aaa bbb", typed "aaa": cursor sits on the space at column == width.
-    const cells = computeCells({ target: "aaa bbb", input: "aaa", status: "active" });
+    const cells = computeCells({ target: "aaa bbb", input: "aaa" });
     const lines = wordWrap(cells, 3);
     expect(cursorCount(lines)).toBe(1); // the cursor is not dropped
     expect(cursorRow(lines)).toBeGreaterThan(0); // and cursorRow is not the fallback 0
   });
 
   test("keeps the trailing block cursor when the last word fills the width", () => {
-    const cells = computeCells({ target: "abc", input: "abc", status: "active" });
+    const cells = computeCells({ target: "abc", input: "abc" });
     const lines = wordWrap(cells, 3);
     expect(cursorCount(lines)).toBe(1);
     expect(cursorRow(lines)).toBe(1);
@@ -85,9 +85,9 @@ describe("wordWrap", () => {
 
   test("layout is independent of typed correctness", () => {
     const target = "the quick brown fox";
-    const pending = wordWrap(computeCells({ target, input: "", status: "active" }), 9);
+    const pending = wordWrap(computeCells({ target, input: "" }), 9);
     const typed = wordWrap(
-      computeCells({ target, input: "the quxck", status: "active" }),
+      computeCells({ target, input: "the quxck" }),
       9,
     );
     expect(text(typed)).toEqual(text(pending));
@@ -99,7 +99,6 @@ describe("cursorRow", () => {
     const cells = computeCells({
       target: "the quick brown fox",
       input: "the quick brown", // cursor at index 15 -> start of "fox" region
-      status: "active",
     });
     const lines = wordWrap(cells, 9);
     // "the quick" / "brown fox" -> cursor sits on the second line

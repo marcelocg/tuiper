@@ -3,5 +3,6 @@
 export type Command =
   | { readonly kind: "type"; readonly char: string }
   | { readonly kind: "deleteChar" }
+  | { readonly kind: "setDuration"; readonly seconds: number }
   | { readonly kind: "quit" }
   | { readonly kind: "none" };

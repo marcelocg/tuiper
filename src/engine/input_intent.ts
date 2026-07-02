@@ -1,13 +1,16 @@
 import type { KeyEvent } from "./key_event";
 import type { Command } from "./command";
-import type { SessionState } from "./session_state";
+import { sessionStatus, type SessionState } from "./session_state";
 
 // Pure input-intent mapping: (KeyEvent, sessionState) -> Command.
 // This is the correctness-critical decision — it alone decides whether a key
 // TYPES into the excerpt or COMMANDS the app. State-gated per the PRD:
-//   - Active run: every printable key is typed input; only control keys
-//     command (Ctrl-C quit, Backspace delete). Even "q"/"?" are typed here.
-// Later states (ready/finished with live hotkeys) extend this switch.
+//   - Ready:    hotkeys live. 1/2/3 pick the duration; any other printable is
+//               the first keystroke (it starts the run and types).
+//   - Active:   every printable key is typed input; only control keys command
+//               (Ctrl-C quit, Backspace delete). Even "q"/"?"/"1" are typed.
+//   - Finished: nothing types; duration re-selection waits for restart (later
+//               slice). Only Ctrl-C responds.
 
 const NONE: Command = { kind: "none" };
 
@@ -20,7 +23,7 @@ export function mapKeyToCommand(key: KeyEvent, state: SessionState): Command {
     return { kind: "quit" };
   }
 
-  if (state.status === "active") {
+  if (sessionStatus(state) === "active") {
     // Plain Backspace deletes the previous character. Ctrl/Alt-Backspace
     // (delete-word) belongs to the later deletion slice.
     if (isPlainBackspace(key)) return { kind: "deleteChar" };
@@ -28,7 +31,33 @@ export function mapKeyToCommand(key: KeyEvent, state: SessionState): Command {
     return NONE;
   }
 
+  // Ready: hotkeys are live. 1/2/3 pick the duration; any other printable is
+  // the first keystroke, which starts (and types into) the run. Duration is
+  // only selectable here — a finished run has no restart yet (later slice), so
+  // changing it post-run would only falsify the results banner.
+  if (sessionStatus(state) === "ready") {
+    const seconds = durationHotkey(key);
+    if (seconds !== null) return { kind: "setDuration", seconds };
+    if (isPrintable(key)) return { kind: "type", char: key.sequence };
+  }
+
+  // Finished: only Ctrl-C (handled above) does anything until restart lands.
   return NONE;
+}
+
+/** 1 / 2 / 3 select the 15 / 30 / 60-second drill length (no modifiers). */
+function durationHotkey(key: KeyEvent): number | null {
+  if (key.ctrl || key.meta || key.option) return null;
+  switch (key.sequence) {
+    case "1":
+      return 15;
+    case "2":
+      return 30;
+    case "3":
+      return 60;
+    default:
+      return null;
+  }
 }
 
 function isPlainBackspace(key: KeyEvent): boolean {

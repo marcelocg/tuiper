@@ -19,7 +19,7 @@ export interface CharCell {
  * One cell per excerpt character (expected glyph + typed status), plus a
  * trailing block-cursor cell once the whole excerpt has been typed.
  */
-export function computeCells(state: SessionState): CharCell[] {
+export function computeCells(state: Pick<SessionState, "target" | "input">): CharCell[] {
   const { target, input } = state;
   const cells: CharCell[] = [];
   for (let i = 0; i < target.length; i++) {

@@ -1,4 +1,5 @@
 import type { Command } from "./command";
+import { charsMatch, normalizeForCompare } from "./text_compare";
 
 // Session engine — a functional (immutable) port of frank_type's
 // TypingSessionState timing model. tuiper keeps the house immutable style
@@ -16,11 +17,43 @@ import type { Command } from "./command";
 
 export type SessionStatus = "ready" | "active" | "finished";
 
+/**
+ * One entry in the session key log. `type` events carry the keystroke's
+ * correctness; `backspace` events mark a deleted position. Ported from
+ * frank_type's `keyEvents`; `elapsedMs` is run-relative (from the first key).
+ */
+export interface KeyStroke {
+  readonly action: "type" | "backspace";
+  readonly index: number;
+  readonly expected?: string;
+  readonly actual?: string;
+  readonly correct?: boolean;
+  readonly elapsedMs: number;
+}
+
+/**
+ * Per-character timing, retained only for positions still present in `input`
+ * (a backspace drops the timings it deletes). Feeds per-word timings and the
+ * later digraph analysis. Ported from frank_type's `characterTimings`.
+ */
+export interface CharTiming {
+  readonly index: number;
+  readonly expected: string;
+  readonly actual: string;
+  readonly correct: boolean;
+  readonly elapsedMs: number;
+  readonly wordIndex: number;
+}
+
 export interface SessionState {
   /** The excerpt to type (already normalized for display). */
   readonly target: string;
   /** Characters entered so far, in order — advances even on a wrong key. */
   readonly input: string;
+  /** Every keystroke, including corrected mistakes (drives `mistakes`). */
+  readonly events: readonly KeyStroke[];
+  /** Timings for the currently-present characters (backspace-trimmed). */
+  readonly timings: readonly CharTiming[];
   /** Selected drill length: 15 / 30 / 60 seconds. */
   readonly durationSeconds: number;
   /** performance.now() of the first keystroke; null until the run starts. */
@@ -42,12 +75,36 @@ export function createSession(
   return {
     target,
     input: "",
+    events: [],
+    timings: [],
     durationSeconds,
     startedAt: null,
     finishedAt: null,
     pausedMs: 0,
     pausedAt: null,
   };
+}
+
+/**
+ * Run-relative elapsed (ms) for an event stamped at `now`, matching frank_type:
+ * `round(now - startedAt - pausedSoFar)`. Requires a started run.
+ */
+function eventElapsedMs(state: SessionState, now: number): number {
+  return Math.round(now - state.startedAt! - pausedSoFar(state, now));
+}
+
+/** Zero-based index of the word containing `charIndex` (space-delimited). */
+function wordIndexFor(text: string, charIndex: number): number {
+  return text.slice(0, charIndex).split(" ").length - 1;
+}
+
+/** Count of typed positions matching their target char (NFC + case-insensitive). */
+export function correctCharacters(state: SessionState): number {
+  let count = 0;
+  for (let i = 0; i < state.input.length; i++) {
+    if (charsMatch(state.target[i]!, state.input[i]!)) count++;
+  }
+  return count;
 }
 
 // --- derived status ----------------------------------------------------------
@@ -119,12 +176,37 @@ export function finish(state: SessionState, now: number): SessionState {
 
 /** Type one character: start-on-first-key, resume, then append (guarded). */
 export function typeChar(state: SessionState, char: string, now: number): SessionState {
-  let next = resume(start(state, now), now);
+  const next = resume(start(state, now), now);
   // Blocked once finished or the excerpt is fully typed (the run is complete).
   if (next.finishedAt !== null || next.input.length >= next.target.length) {
     return next;
   }
-  return { ...next, input: next.input + char };
+  const index = next.input.length;
+  const expected = next.target[index]!;
+  const correct = charsMatch(expected, char);
+  const elapsedMs = eventElapsedMs(next, now);
+  const event: KeyStroke = {
+    action: "type",
+    index,
+    expected: normalizeForCompare(expected),
+    actual: normalizeForCompare(char),
+    correct,
+    elapsedMs,
+  };
+  const timing: CharTiming = {
+    index,
+    expected: normalizeForCompare(expected),
+    actual: normalizeForCompare(char),
+    correct,
+    elapsedMs,
+    wordIndex: wordIndexFor(next.target, index),
+  };
+  return {
+    ...next,
+    input: next.input + char,
+    events: [...next.events, event],
+    timings: [...next.timings, timing],
+  };
 }
 
 /** Delete the last `count` characters (default 1). Resumes a paused clock. */
@@ -139,7 +221,19 @@ export function backspace(state: SessionState, now: number, count = 1): SessionS
   }
   const next = resume(state, now);
   const deleted = Math.min(count, next.input.length);
-  return { ...next, input: next.input.slice(0, next.input.length - deleted) };
+  const firstDeletedIndex = next.input.length - deleted;
+  const elapsedMs = eventElapsedMs(next, now);
+  // One backspace event per removed position, descending index (frank_type order).
+  const deletes: KeyStroke[] = [];
+  for (let index = next.input.length - 1; index >= firstDeletedIndex; index--) {
+    deletes.push({ action: "backspace", index, elapsedMs });
+  }
+  return {
+    ...next,
+    input: next.input.slice(0, firstDeletedIndex),
+    events: [...next.events, ...deletes],
+    timings: next.timings.filter((t) => t.index < firstDeletedIndex),
+  };
 }
 
 /**

@@ -21,6 +21,8 @@ import {
   visibleWindow,
   wordWrap,
 } from "../engine/typing_view";
+import { buildResult } from "../engine/session_result";
+import { formatResultPanel } from "../engine/results_view";
 import { cellToChunk, chunk, slate, type Chunk } from "./theme";
 
 // Thin OpenTUI shell above the engine seam: it translates real key events into
@@ -72,7 +74,10 @@ export async function runApp(): Promise<CliRenderer> {
 
   function draw(now: number): void {
     header.content = buildHeader(state, now);
-    surface.content = buildSurface(state, renderer.width, surfaceHeight());
+    surface.content =
+      sessionStatus(state) === "finished"
+        ? buildResultsPanel(state, now)
+        : buildSurface(state, renderer.width, surfaceHeight());
     footer.content = buildFooter(state);
   }
 
@@ -143,6 +148,17 @@ function buildSurface(state: SessionState, width: number, height: number): Style
     for (const cell of lines[r]!) chunks.push(cellToChunk(cell));
     if (r < win.end - 1) chunks.push(chunk("\n"));
   }
+  return new StyledText(chunks);
+}
+
+/** Post-run results panel: the five headline metrics, one per line. */
+function buildResultsPanel(state: SessionState, now: number): StyledText {
+  const lines = formatResultPanel(buildResult(state, now));
+  const chunks: Chunk[] = [];
+  lines.forEach((line, i) => {
+    chunks.push(chunk(line, slate.correct));
+    if (i < lines.length - 1) chunks.push(chunk("\n"));
+  });
   return new StyledText(chunks);
 }
 

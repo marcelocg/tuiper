@@ -1,5 +1,6 @@
 import type { Command } from "./command";
 import { charsMatch, normalizeForCompare } from "./text_compare";
+import { previousWordDeletionCount, toIndexDeletionCount } from "./deletion";
 
 // Session engine — a functional (immutable) port of frank_type's
 // TypingSessionState timing model. tuiper keeps the house immutable style
@@ -251,6 +252,22 @@ export function applyCommand(
       return typeChar(state, cmd.char, now);
     case "deleteChar":
       return backspace(state, now, 1);
+    case "deleteWord":
+      // Word boundaries come off the TARGET at the cursor (input.length),
+      // matching frank_type's backspacePreviousWord.
+      return backspace(
+        state,
+        now,
+        previousWordDeletionCount(state.target, state.input.length),
+      );
+    case "deleteToLineStart":
+      // The shell resolves `toIndex` from the terminal width; unset (pure unit
+      // tests, or an unwrapped surface) means delete to the input start.
+      return backspace(
+        state,
+        now,
+        toIndexDeletionCount(state.input.length, cmd.toIndex ?? 0),
+      );
     case "setDuration":
       // Duration is chosen before a run (ready only). Once typing starts it is
       // locked; once finished, the run's length is a fact and must not change.

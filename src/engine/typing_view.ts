@@ -121,6 +121,75 @@ export function wordWrap(cells: CharCell[], width: number): CharCell[][] {
   return lines;
 }
 
+/**
+ * Target-text indices at which each wrapped display line begins, for `width`.
+ * Replicates `wordWrap`'s greedy break rules (drop the boundary space, hard-split
+ * over-long words) over the raw target so a break here lands where `wordWrap`
+ * would break. Drives delete-to-line-start (Ctrl-U).
+ */
+export function visualLineStarts(target: string, width: number): number[] {
+  const w = Math.max(1, Math.floor(width));
+  const starts: number[] = [0];
+  let lineLen = 0;
+  let i = 0;
+  const n = target.length;
+  while (i < n) {
+    if (target[i] === " ") {
+      if (lineLen >= w) {
+        starts.push(i + 1); // wrap: the dropped space's successor starts the line
+        lineLen = 0;
+        i++;
+        continue;
+      }
+      lineLen++;
+      i++;
+      continue;
+    }
+    // Maximal run of non-space cells (a word).
+    let j = i;
+    while (j < n && target[j] !== " ") j++;
+    const wordLen = j - i;
+    if (wordLen > w) {
+      for (let k = i; k < j; k++) {
+        if (lineLen >= w) {
+          starts.push(k);
+          lineLen = 0;
+        }
+        lineLen++;
+      }
+    } else {
+      if (lineLen + wordLen > w) {
+        starts.push(i);
+        lineLen = 0;
+      }
+      lineLen += wordLen;
+    }
+    i = j;
+  }
+  return starts;
+}
+
+/**
+ * Target index at the start of the wrapped line holding `cursor` (input.length),
+ * never past `cursor`. Mirrors frank_type's `currentVisualLineStartIndex`: it
+ * references the char under the cursor (or the last char when the cursor sits
+ * past the end) and returns that line's first index.
+ */
+export function visualLineStartIndex(
+  target: string,
+  cursor: number,
+  width: number,
+): number {
+  if (cursor <= 0) return 0;
+  const ref = cursor >= target.length ? Math.max(target.length - 1, 0) : cursor;
+  let start = 0;
+  for (const s of visualLineStarts(target, width)) {
+    if (s <= ref) start = s;
+    else break;
+  }
+  return Math.min(start, cursor);
+}
+
 /** Line index holding the cursor cell, or 0 if none carries it. */
 export function cursorRow(lines: CharCell[][]): number {
   for (let r = 0; r < lines.length; r++) {

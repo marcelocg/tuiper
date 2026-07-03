@@ -3,6 +3,8 @@ import {
   computeCells,
   cursorRow,
   visibleWindow,
+  visualLineStartIndex,
+  visualLineStarts,
   wordWrap,
   type CharCell,
 } from "../../src/engine/typing_view";
@@ -122,5 +124,52 @@ describe("visibleWindow", () => {
 
   test("does not scroll before the start", () => {
     expect(visibleWindow(20, 1, 5)).toEqual({ start: 0, end: 5 });
+  });
+});
+
+describe("visualLineStarts — wrap-aligned line boundaries", () => {
+  test("break points match wordWrap's line starts", () => {
+    // Assert the pure line-start indices land where wordWrap actually breaks:
+    // the first non-dropped cell of each wrapped line matches visualLineStarts.
+    const target = "the quick brown fox jumps over the lazy dog";
+    for (const width of [8, 10, 13, 20]) {
+      const cells = computeCells({ target, input: "" });
+      const lines = wordWrap(cells, width).filter((l) => l.length > 0);
+      const firstChars = lines.map((l) => l[0]!.char);
+      const starts = visualLineStarts(target, width);
+      expect(starts.map((s) => target[s])).toEqual(firstChars);
+    }
+  });
+
+  test("single line when everything fits", () => {
+    expect(visualLineStarts("hello world", 80)).toEqual([0]);
+  });
+
+  test("hard-splits a word longer than the width", () => {
+    // "abcdefgh" (8) at width 3 → lines start at 0,3,6.
+    expect(visualLineStarts("abcdefgh", 3)).toEqual([0, 3, 6]);
+  });
+});
+
+describe("visualLineStartIndex — Ctrl-U resolution", () => {
+  const target = "the quick brown fox"; // wraps at width 10: "the quick"|"brown fox"
+
+  test("returns 0 for a cursor on the first line", () => {
+    expect(visualLineStartIndex(target, 5, 10)).toBe(0);
+  });
+
+  test("returns the second line's start once past the wrap", () => {
+    // "brown" begins at index 10 (after "the quick ").
+    expect(visualLineStartIndex(target, 13, 10)).toBe(10);
+  });
+
+  test("never returns past the cursor", () => {
+    expect(visualLineStartIndex(target, 11, 10)).toBe(10);
+    expect(visualLineStartIndex(target, 10, 10)).toBe(10);
+  });
+
+  test("cursor at 0 and unwrapped text stay at line start 0", () => {
+    expect(visualLineStartIndex(target, 0, 10)).toBe(0);
+    expect(visualLineStartIndex(target, 8, 80)).toBe(0);
   });
 });

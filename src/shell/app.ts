@@ -8,7 +8,9 @@ import {
 import { mapKeyToCommand } from "../engine/input_intent";
 import {
   applyCommand,
+  correctCharacters,
   createSession,
+  elapsedMs,
   finish,
   remainingSeconds,
   sessionStatus,
@@ -24,6 +26,8 @@ import {
   wordWrap,
 } from "../engine/typing_view";
 import { computeHeatCells, formatSlowPairs } from "../engine/heatmap_view";
+import { LABEL_WIDTH, TRACK_FILL, raceLanes } from "../engine/race_view";
+import { calculateMetrics } from "../engine/metrics";
 import { buildResult } from "../engine/session_result";
 import { formatResultPanel } from "../engine/results_view";
 import { preferredSpeedBand, randomExcerptIndex } from "../engine/speed_band";
@@ -41,6 +45,7 @@ import { cellToChunk, chunk, heatCellToChunk, slate, type Chunk } from "./theme"
 
 const SURFACE_TOP = 2;
 const FOOTER_RESERVE = 2; // blank line + footer
+const RACE_STRIP_ROWS = 4; // blank spacer + three race lanes, reserved always
 
 /** 24-bit color support; otherwise the heat map snaps to the 256-color cube. */
 const TRUECOLOR = /^(truecolor|24bit)$/i.test(process.env.COLORTERM ?? "");
@@ -128,16 +133,26 @@ export async function runApp(): Promise<CliRenderer> {
     left: 0,
     wrapMode: "none", // we wrap in the engine; keep layout fixed
   });
+  // Live race strip: three pace-setter lanes under the typing surface, drawn
+  // only during an active run and cleared otherwise. It sits in a reserved band
+  // just above the footer so the surface never reflows when the race appears.
+  const raceStrip = new TextRenderable(renderer, {
+    content: "",
+    position: "absolute",
+    top: SURFACE_TOP + 1,
+    left: 0,
+    wrapMode: "none",
+  });
   const footer = new TextRenderable(renderer, {
     content: "",
     position: "absolute",
     top: Math.max(SURFACE_TOP + 1, renderer.height - 1),
     left: 0,
   });
-  for (const r of [header, surface, footer]) renderer.root.add(r);
+  for (const r of [header, surface, raceStrip, footer]) renderer.root.add(r);
 
   function surfaceHeight(): number {
-    return Math.max(1, renderer.height - SURFACE_TOP - FOOTER_RESERVE);
+    return Math.max(1, renderer.height - SURFACE_TOP - FOOTER_RESERVE - RACE_STRIP_ROWS);
   }
 
   function draw(now: number): void {
@@ -146,6 +161,10 @@ export async function runApp(): Promise<CliRenderer> {
       sessionStatus(state) === "finished"
         ? buildResultsPanel(state, now, renderer.width, surfaceHeight())
         : buildSurface(state, renderer.width, surfaceHeight());
+    // Anchor the race strip to the blank row just under the surface.
+    raceStrip.top = SURFACE_TOP + surfaceHeight() + 1;
+    raceStrip.content =
+      sessionStatus(state) === "active" ? buildRaceStrip(state, now, renderer.width) : "";
     footer.content = buildFooter(state, category);
   }
 
@@ -231,6 +250,45 @@ function buildHeader(state: SessionState, now: number): StyledText {
     chunk(`${secs}s`, secs <= 5 ? slate.wrong : slate.chrome),
     chunk(`  ·  ${label}`, slate.chrome),
   ]);
+}
+
+/** Per-lane glyph color: the user chases the fast marker, ahead of the slow one. */
+const RACE_GLYPH_COLOR = {
+  slow: slate.pending,
+  you: slate.correct,
+  fast: slate.wrong,
+} as const;
+
+/**
+ * The live race strip: three labeled lanes (Slow 60 / You / Fast 140) with a
+ * glyph advancing on each 100ms tick. The user's live WPM drives their marker,
+ * computed from the same metrics the results panel uses so the chase matches the
+ * final number.
+ */
+function buildRaceStrip(state: SessionState, now: number, width: number): StyledText {
+  const elapsed = elapsedMs(state, now);
+  const userWpm = calculateMetrics({
+    typedEvents: state.events,
+    correctCharacters: correctCharacters(state),
+    elapsedMs: elapsed,
+    targetText: state.target,
+  }).wpm;
+  const trackWidth = Math.max(1, width - LABEL_WIDTH - 1);
+  const lanes = raceLanes(
+    { elapsedMs: elapsed, durationSeconds: state.durationSeconds, userWpm },
+    trackWidth,
+  );
+
+  const chunks: Chunk[] = [];
+  lanes.forEach((lane, i) => {
+    chunks.push(chunk(`${lane.label.padEnd(LABEL_WIDTH)} `, slate.chrome));
+    if (lane.glyphIndex > 0) chunks.push(chunk(TRACK_FILL.repeat(lane.glyphIndex), slate.chrome));
+    chunks.push(chunk(lane.track[lane.glyphIndex]!, RACE_GLYPH_COLOR[lane.id]));
+    const trailing = lane.track.length - lane.glyphIndex - 1;
+    if (trailing > 0) chunks.push(chunk(TRACK_FILL.repeat(trailing), slate.chrome));
+    if (i < lanes.length - 1) chunks.push(chunk("\n"));
+  });
+  return new StyledText(chunks);
 }
 
 /** Render the current session onto the typing surface as a StyledText grid. */

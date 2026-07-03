@@ -31,6 +31,28 @@ describe("SettingsStore", () => {
     expect(new SettingsStore(new FakePort({ theme: "neon" })).load().theme).toBe("slate");
   });
 
+  test("loads a persisted locale alongside the theme", () => {
+    expect(new SettingsStore(new FakePort({ theme: "rush", locale: "pt-BR" })).load()).toEqual({
+      theme: "rush",
+      locale: "pt-BR",
+    });
+  });
+
+  test("omits locale when unset so the shell can seed from $LANG", () => {
+    expect(new SettingsStore(new FakePort({ theme: "rush" })).load().locale).toBeUndefined();
+  });
+
+  test("omits locale on an unknown value (never a bad default)", () => {
+    expect(new SettingsStore(new FakePort({ locale: "fr" })).load().locale).toBeUndefined();
+  });
+
+  test("round-trips a chosen locale", () => {
+    const port = new FakePort();
+    const store = new SettingsStore(port);
+    store.save({ theme: "slate", locale: "pt-BR" });
+    expect(store.load().locale).toBe("pt-BR");
+  });
+
   test("ignores a non-object payload", () => {
     expect(new SettingsStore(new FakePort([1, 2, 3])).load()).toEqual(DEFAULT_SETTINGS);
   });

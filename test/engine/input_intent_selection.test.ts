@@ -14,6 +14,7 @@ const finished = finish(typeChar(createSession("hello world"), "h", 1000), 40000
 const tab = key({ name: "tab", sequence: "\t" });
 const cKey = key({ name: "c", sequence: "c" });
 const tKey = key({ name: "t", sequence: "t" });
+const lKey = key({ name: "l", sequence: "l" });
 const pKey = key({ name: "p", sequence: "p" });
 
 describe("Tab → nextExcerpt", () => {
@@ -49,6 +50,17 @@ describe("t → toggleTheme", () => {
 
   test("is typed input mid-run (never a command)", () => {
     expect(mapKeyToCommand(tKey, active)).toEqual({ kind: "type", char: "t" });
+  });
+});
+
+describe("l → toggleLocale", () => {
+  test("toggles the locale when Ready or Finished", () => {
+    expect(mapKeyToCommand(lKey, ready)).toEqual({ kind: "toggleLocale" });
+    expect(mapKeyToCommand(lKey, finished)).toEqual({ kind: "toggleLocale" });
+  });
+
+  test("is typed input mid-run (never a command)", () => {
+    expect(mapKeyToCommand(lKey, active)).toEqual({ kind: "type", char: "l" });
   });
 });
 

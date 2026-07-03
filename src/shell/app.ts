@@ -41,6 +41,8 @@ import { buildStoredSession } from "../storage/session_record";
 import { SettingsStore } from "../storage/settings_store";
 import { FileSettingsStorage } from "../storage/settings_file_storage";
 import { nextTheme } from "../engine/theme";
+import { localeFromEnv, nextLocale, type Locale } from "../engine/locale";
+import { stringsFor, type UIStrings } from "../engine/strings";
 import {
   cellToChunk,
   chunk,
@@ -78,15 +80,19 @@ export async function runApp(): Promise<CliRenderer> {
     exitOnCtrlC: false, // we handle quit ourselves
   });
 
-  // Corpus + adaptive selection (#5). Locale is fixed to English until the
-  // locale-switch slice lands; the store feeds the speed band and receives
-  // finished runs.
+  // Corpus + adaptive selection (#5). The active locale filters the corpus and
+  // picks the UI-string table; the store feeds the speed band and finished runs.
   const store = new SessionStore(new FileStorage());
-  // Persisted preferences (theme today; locale/duration/category later). Loaded
-  // once at boot; the active palette drives every screen and `t` swaps it.
+  // Persisted preferences (theme + locale; duration/category later). Loaded once
+  // at boot; the active palette drives every screen and `t` swaps it. Locale is
+  // seeded from $LANG on first run (no persisted choice), then `l` swaps and
+  // persists it (#11).
   const settings = new SettingsStore(new FileSettingsStorage());
-  let palette: Palette = paletteFor(settings.load().theme);
-  const excerpts: readonly Excerpt[] = excerptsForLocale("en");
+  const loaded = settings.load();
+  let palette: Palette = paletteFor(loaded.theme);
+  let locale: Locale = loaded.locale ?? localeFromEnv(process.env.LANG);
+  let strings: UIStrings = stringsFor(locale);
+  let excerpts: readonly Excerpt[] = excerptsForLocale(locale);
   let category = "random";
   let currentIndex: number | null = null; // null → nothing to exclude yet
   let saved = false;
@@ -177,22 +183,24 @@ export async function runApp(): Promise<CliRenderer> {
 
   function draw(now: number): void {
     if (overlay === "profile") {
-      header.content = buildHeader(state, now, palette);
-      surface.content = buildProfilePanel(store, renderer.width, surfaceHeight(), palette);
+      header.content = buildHeader(state, now, palette, strings);
+      surface.content = buildProfilePanel(store, renderer.width, surfaceHeight(), palette, strings);
       raceStrip.content = "";
-      footer.content = buildFooter(state, category, overlay, palette);
+      footer.content = buildFooter(state, category, overlay, palette, locale, strings);
       return;
     }
-    header.content = buildHeader(state, now, palette);
+    header.content = buildHeader(state, now, palette, strings);
     surface.content =
       sessionStatus(state) === "finished"
-        ? buildResultsPanel(state, now, renderer.width, surfaceHeight(), palette)
+        ? buildResultsPanel(state, now, renderer.width, surfaceHeight(), palette, strings)
         : buildSurface(state, renderer.width, surfaceHeight(), palette);
     // Anchor the race strip to the blank row just under the surface.
     raceStrip.top = SURFACE_TOP + surfaceHeight() + 1;
     raceStrip.content =
-      sessionStatus(state) === "active" ? buildRaceStrip(state, now, renderer.width, palette) : "";
-    footer.content = buildFooter(state, category, overlay, palette);
+      sessionStatus(state) === "active"
+        ? buildRaceStrip(state, now, renderer.width, palette, strings)
+        : "";
+    footer.content = buildFooter(state, category, overlay, palette, locale, strings);
   }
 
   renderer.keyInput.on("keypress", (e: OpenTuiKeyEvent) => {
@@ -227,7 +235,22 @@ export async function runApp(): Promise<CliRenderer> {
     // screen in it, and persist the choice (a write failure never interrupts).
     if (cmd.kind === "toggleTheme") {
       palette = paletteFor(nextTheme(palette.name));
-      settings.save({ theme: palette.name });
+      settings.save({ theme: palette.name, locale });
+      draw(now);
+      renderer.requestRender();
+      return;
+    }
+    // Locale toggle is a shell concern (#11): swap the string table, re-filter
+    // the corpus to the new locale, load a fresh excerpt from it (the old index
+    // is meaningless against a different corpus), and persist. Ready/Finished
+    // only — mid-run `l` is typed input, so replacing the session here is safe.
+    if (cmd.kind === "toggleLocale") {
+      locale = nextLocale(locale);
+      strings = stringsFor(locale);
+      excerpts = excerptsForLocale(locale);
+      currentIndex = null; // nothing to exclude across a corpus swap
+      loadExcerpt();
+      settings.save({ theme: palette.name, locale });
       draw(now);
       renderer.requestRender();
       return;
@@ -293,16 +316,21 @@ export async function runApp(): Promise<CliRenderer> {
 }
 
 /** Countdown / status line above the typing surface. */
-function buildHeader(state: SessionState, now: number, palette: Palette): StyledText {
+function buildHeader(
+  state: SessionState,
+  now: number,
+  palette: Palette,
+  strings: UIStrings,
+): StyledText {
   const status = sessionStatus(state);
   if (status === "finished") {
     return new StyledText([
-      chunk(`Time! ${state.durationSeconds}s drill complete — `, palette.correct),
-      chunk("Ctrl-C to quit", palette.chrome),
+      chunk(strings.header.done(state.durationSeconds), palette.correct),
+      chunk(strings.header.quitHint, palette.chrome),
     ]);
   }
   const secs = remainingSeconds(state, now);
-  const label = status === "active" ? "typing" : "ready";
+  const label = status === "active" ? strings.header.typing : strings.header.ready;
   return new StyledText([
     chunk(`${secs}s`, secs <= 5 ? palette.wrong : palette.chrome),
     chunk(`  ·  ${label}`, palette.chrome),
@@ -320,7 +348,13 @@ function raceGlyphColor(palette: Palette): Record<"slow" | "you" | "fast", RGBA>
  * computed from the same metrics the results panel uses so the chase matches the
  * final number.
  */
-function buildRaceStrip(state: SessionState, now: number, width: number, palette: Palette): StyledText {
+function buildRaceStrip(
+  state: SessionState,
+  now: number,
+  width: number,
+  palette: Palette,
+  strings: UIStrings,
+): StyledText {
   const elapsed = elapsedMs(state, now);
   const userWpm = calculateMetrics({
     typedEvents: state.events,
@@ -328,7 +362,13 @@ function buildRaceStrip(state: SessionState, now: number, width: number, palette
     elapsedMs: elapsed,
     targetText: state.target,
   }).wpm;
-  const trackWidth = Math.max(1, width - LABEL_WIDTH - 1);
+  // Localized lane labels vary in width (e.g. "Fast" vs "Rápido"), so pad every
+  // lane to the widest label in the active locale — the track starts aligned.
+  const labelWidth = Math.max(
+    LABEL_WIDTH,
+    ...Object.values(strings.race).map((label) => label.length),
+  );
+  const trackWidth = Math.max(1, width - labelWidth - 1);
   const lanes = raceLanes(
     { elapsedMs: elapsed, durationSeconds: state.durationSeconds, userWpm },
     trackWidth,
@@ -337,7 +377,7 @@ function buildRaceStrip(state: SessionState, now: number, width: number, palette
   const glyphColor = raceGlyphColor(palette);
   const chunks: Chunk[] = [];
   lanes.forEach((lane, i) => {
-    chunks.push(chunk(`${lane.label.padEnd(LABEL_WIDTH)} `, palette.chrome));
+    chunks.push(chunk(`${strings.race[lane.id].padEnd(labelWidth)} `, palette.chrome));
     if (lane.glyphIndex > 0) chunks.push(chunk(TRACK_FILL.repeat(lane.glyphIndex), palette.chrome));
     chunks.push(chunk(lane.track[lane.glyphIndex]!, glyphColor[lane.id]));
     const trailing = lane.track.length - lane.glyphIndex - 1;
@@ -370,6 +410,7 @@ function buildResultsPanel(
   width: number,
   height: number,
   palette: Palette,
+  strings: UIStrings,
 ): StyledText {
   const result = buildResult(state, now);
   // Accumulate rows (each a chunk list), then join with newlines once — the row
@@ -377,11 +418,13 @@ function buildResultsPanel(
   // no hand-kept line math can drift out of sync with what is emitted.
   const rows: Chunk[][] = [];
 
-  for (const line of formatResultPanel(result)) rows.push([chunk(line, palette.correct)]);
+  for (const line of formatResultPanel(result, strings.results)) {
+    rows.push([chunk(line, palette.correct)]);
+  }
 
   const slowPairs = formatSlowPairs(result.digraphs.rankedPairs);
   if (slowPairs.length > 0) {
-    rows.push([], [chunk("Slowest pairs", palette.chrome)]);
+    rows.push([], [chunk(strings.results.slowestPairs, palette.chrome)]);
     for (const line of slowPairs) rows.push([chunk(line, palette.wrong)]);
   }
 
@@ -412,12 +455,18 @@ function buildResultsPanel(
  * width/height. Read once per open/resize (never per-tick), so `store.all()`'s
  * compaction cost stays off the render loop.
  */
-function buildProfilePanel(store: SessionStore, width: number, height: number, palette: Palette): StyledText {
+function buildProfilePanel(
+  store: SessionStore,
+  width: number,
+  height: number,
+  palette: Palette,
+  strings: UIStrings,
+): StyledText {
   const chartWidth = Math.max(1, width);
   // Split the surface height between the two metric charts, reserving rows for
   // the title, the two stat headlines, and spacers (~5 chrome rows).
   const chartHeight = Math.max(1, Math.floor((height - 5) / 2));
-  const lines = formatProfile(buildProfile(store.all()), chartWidth, chartHeight);
+  const lines = formatProfile(buildProfile(store.all()), chartWidth, chartHeight, strings.profile);
   // Never overflow the surface into the footer — window to the visible height
   // (from the top), matching how the typing/results panels clamp their content.
   const win = visibleWindow(lines.length, 0, height);
@@ -433,23 +482,29 @@ function buildProfilePanel(store: SessionStore, width: number, height: number, p
   return new StyledText(chunks);
 }
 
-/** Persistent hint bar: duration + category + theme + controls. */
+/** Persistent hint bar: duration + category + theme + locale + controls. */
 function buildFooter(
   state: SessionState,
   category: string,
   overlay: "profile" | null,
   palette: Palette,
+  locale: Locale,
+  strings: UIStrings,
 ): StyledText {
   if (overlay === "profile") {
-    return new StyledText([chunk("Profile · any key to close · Ctrl-C quit", palette.chrome)]);
+    return new StyledText([chunk(strings.profile.closeHint, palette.chrome)]);
   }
+  const f = strings.footer;
   // The duration hint only applies before a run starts (ready); mid-run it is
   // locked and post-run it is a settled fact.
-  const gate = sessionStatus(state) === "ready" ? " · 1/2/3 duration" : "";
+  const gate = sessionStatus(state) === "ready" ? ` · ${f.durationHint}` : "";
+  // Category shows its localized display name; theme/locale show their stable
+  // identifiers (slate/rush, en/pt-BR) so the active choice is unambiguous.
+  const categoryLabel = strings.categories[category] ?? category;
   return new StyledText([
     chunk(
-      `Duration ${state.durationSeconds}s · Category ${category} · Theme ${palette.name}${gate} · ` +
-        `Tab next · c category · t theme · p profile · Bksp char · Ctrl-Bksp word · Ctrl-U line · Ctrl-C quit`,
+      `${f.duration} ${state.durationSeconds}s · ${f.category} ${categoryLabel} · ` +
+        `${f.theme} ${palette.name} · ${f.locale} ${locale}${gate} · ${f.hints}`,
       palette.chrome,
     ),
   ]);

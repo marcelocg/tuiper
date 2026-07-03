@@ -2,14 +2,20 @@
 // SessionStore, the impure edge is an injected port (read/write JSON); the app
 // injects a file adapter (`settings.json`), tests inject an in-memory fake.
 //
-// Only `theme` is modeled today; locale / last-duration / last-category (PRD)
+// `theme` and `locale` are modeled today; last-duration / last-category (PRD)
 // slot in later. Unknown keys in the stored payload ride through untouched on
 // save, so a future field written by a newer build survives an older one.
+//
+// `locale` is optional: absent means "no persisted choice yet", so the shell
+// falls back to the $LANG-derived default (locale.ts) on first run.
 
 import { DEFAULT_THEME, isThemeName, type ThemeName } from "../engine/theme";
+import { isLocale, type Locale } from "../engine/locale";
 
 export interface Settings {
   readonly theme: ThemeName;
+  /** Absent until the user has picked a locale; the shell seeds it from $LANG. */
+  readonly locale?: Locale;
 }
 
 export const DEFAULT_SETTINGS: Settings = { theme: DEFAULT_THEME };
@@ -30,7 +36,9 @@ export class SettingsStore {
   load(): Settings {
     const raw = this.readRaw();
     const theme = isThemeName(raw.theme) ? raw.theme : DEFAULT_THEME;
-    return { theme };
+    // Locale stays absent (not defaulted) when unset/invalid, so the shell can
+    // tell "never chosen" from "chosen en" and seed from $LANG on first run.
+    return isLocale(raw.locale) ? { theme, locale: raw.locale } : { theme };
   }
 
   /** Persist settings, preserving any unknown keys already on disk. */

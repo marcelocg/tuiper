@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { EMPTY_HISTORY_MESSAGE, formatProfile } from "../../src/engine/profile_view";
 import { buildProfile } from "../../src/engine/profile";
+import { stringsFor } from "../../src/engine/strings";
 import type { StoredSession } from "../../src/storage/session_store";
 
 // formatProfile composes the pure profile view-model into display lines: a title,
@@ -31,6 +32,21 @@ describe("formatProfile", () => {
     expect(text).toMatch(/WPM.*best 80.*avg 60.*recent 80/s);
     // accuracy best 96 / avg 93 / recent 96, percent-suffixed
     expect(text).toMatch(/Accuracy.*best 96%.*avg 93%.*recent 96%/s);
+  });
+
+  test("localizes the title, stats, and empty message for pt-BR", () => {
+    const pt = stringsFor("pt-BR").profile;
+    expect(formatProfile(buildProfile([]), 20, 3, pt)).toContain(pt.empty);
+
+    const profile = buildProfile([
+      session("2026-07-01T00:00:00Z", 40, 90),
+      session("2026-07-02T00:00:00Z", 80, 96),
+    ]);
+    const text = formatProfile(profile, 24, 3, pt).join("\n");
+    expect(text).toContain("Perfil");
+    expect(text).toContain("Sessões");
+    expect(text).toMatch(/PPM.*melhor 80.*média 60.*recente 80/s);
+    expect(text).not.toContain("Accuracy");
   });
 
   test("includes a braille chart of the requested height per metric", () => {

@@ -78,6 +78,19 @@ export interface SourcesStrings {
   readonly closeHint: string;
 }
 
+/** Terminal-capability guards (#13): the too-small screen and the pre-boot
+ * refusals for a non-TTY / non-raw-mode start. */
+export interface TerminalStrings {
+  readonly tooSmallTitle: string;
+  readonly tooSmallHint: string;
+  /** Label preceding the required minimum size (e.g. "minimum 80×24"). */
+  readonly minLabel: string;
+  /** Label preceding the current size (e.g. "now 60×20"). */
+  readonly nowLabel: string;
+  readonly notATty: string;
+  readonly noRawMode: string;
+}
+
 /** Everything the shell and views render, for one locale. */
 export interface UIStrings {
   readonly header: HeaderStrings;
@@ -86,6 +99,7 @@ export interface UIStrings {
   readonly profile: ProfileStrings;
   readonly help: HelpStrings;
   readonly sources: SourcesStrings;
+  readonly terminal: TerminalStrings;
   /** Race-lane labels, keyed by racer id (localized in the strip). */
   readonly race: Record<RacerId, string>;
   /** Category-filter display names, keyed by the internal category id. */
@@ -149,6 +163,18 @@ const EN: UIStrings = {
     title: "Sources",
     empty: "No excerpts loaded.",
     closeHint: "Sources · ↑/↓ scroll · Esc or q to close · Ctrl-C quit",
+  },
+  terminal: {
+    tooSmallTitle: "Terminal too small",
+    tooSmallHint: "Resize the window to continue.",
+    minLabel: "minimum",
+    nowLabel: "now",
+    notATty:
+      "tuiper needs an interactive terminal (TTY). Run it directly in a " +
+      "terminal, not through a pipe or redirect.",
+    noRawMode:
+      "tuiper needs raw-mode keyboard input, which this terminal does not " +
+      "provide. Try a different terminal.",
   },
   race: { slow: "Slow", you: "You", fast: "Fast" },
   categories: {
@@ -216,6 +242,18 @@ const PT_BR: UIStrings = {
     title: "Fontes",
     empty: "Nenhum trecho carregado.",
     closeHint: "Fontes · ↑/↓ rolar · Esc ou q para fechar · Ctrl-C sair",
+  },
+  terminal: {
+    tooSmallTitle: "Terminal pequeno demais",
+    tooSmallHint: "Redimensione a janela para continuar.",
+    minLabel: "mínimo",
+    nowLabel: "agora",
+    notATty:
+      "tuiper precisa de um terminal interativo (TTY). Execute-o diretamente " +
+      "em um terminal, não através de um pipe ou redirecionamento.",
+    noRawMode:
+      "tuiper precisa de entrada de teclado em modo raw, que este terminal " +
+      "não oferece. Tente outro terminal.",
   },
   race: { slow: "Lento", you: "Você", fast: "Rápido" },
   categories: {

@@ -43,6 +43,11 @@ import { buildStoredSession } from "../storage/session_record";
 import { SettingsStore } from "../storage/settings_store";
 import { FileSettingsStorage } from "../storage/settings_file_storage";
 import { nextTheme } from "../engine/theme";
+import {
+  prefersTruecolor,
+  terminalTooSmall,
+  terminalTooSmallLines,
+} from "../engine/terminal";
 import { localeFromEnv, nextLocale, type Locale } from "../engine/locale";
 import { stringsFor, type UIStrings } from "../engine/strings";
 import {
@@ -65,7 +70,7 @@ const FOOTER_RESERVE = 2; // blank line + footer
 const RACE_STRIP_ROWS = 4; // blank spacer + three race lanes, reserved always
 
 /** 24-bit color support; otherwise the heat map snaps to the 256-color cube. */
-const TRUECOLOR = /^(truecolor|24bit)$/i.test(process.env.COLORTERM ?? "");
+const TRUECOLOR = prefersTruecolor(process.env);
 
 /** Category filter cycle for the `c` hotkey (PRD keymap). */
 const CATEGORIES = ["random", "scifi", "fantasy", "biography"] as const;
@@ -230,6 +235,17 @@ export async function runApp(): Promise<CliRenderer> {
   }
 
   function draw(now: number): void {
+    // Below the 80×24 floor the layout can't fit — show a terminal-too-small
+    // notice and stop drawing everything else. The wall-clock timer keeps
+    // running underneath (it's timestamp-based); the resize handler redraws the
+    // real screen the moment the window grows back (#13, PRD story 49).
+    if (terminalTooSmall(renderer.width, renderer.height)) {
+      header.content = "";
+      surface.content = buildTooSmall(renderer.width, renderer.height, palette, strings);
+      raceStrip.content = "";
+      footer.content = "";
+      return;
+    }
     if (overlay) {
       header.content = buildHeader(state, now, palette, strings);
       raceStrip.content = "";
@@ -460,6 +476,22 @@ function buildRaceStrip(
     const trailing = lane.track.length - lane.glyphIndex - 1;
     if (trailing > 0) chunks.push(chunk(TRACK_FILL.repeat(trailing), palette.chrome));
     if (i < lanes.length - 1) chunks.push(chunk("\n"));
+  });
+  return new StyledText(chunks);
+}
+
+/** The terminal-too-small notice: the pure lines painted in chrome. */
+function buildTooSmall(
+  width: number,
+  height: number,
+  palette: Palette,
+  strings: UIStrings,
+): StyledText {
+  const lines = terminalTooSmallLines(width, height, strings.terminal);
+  const chunks: Chunk[] = [];
+  lines.forEach((line, i) => {
+    chunks.push(chunk(line, palette.chrome));
+    if (i < lines.length - 1) chunks.push(chunk("\n"));
   });
   return new StyledText(chunks);
 }

@@ -6,10 +6,12 @@
   "scripts": {
     "start": "bun run index.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:corpus": "bun run scripts/build-corpus.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "yaml": "^2.9.0"
   },
   "peerDependencies": {
     "typescript": "^5"

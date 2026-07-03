@@ -45,8 +45,10 @@ export function mapKeyToCommand(key: KeyEvent, state: SessionState): Command {
   }
 
   // Ready / Finished: `c` cycles the category filter (then reloads an excerpt);
-  // `p` opens the profile screen (a shell overlay over the current session).
+  // `t` toggles the theme; `p` opens the profile screen (a shell overlay over
+  // the current session).
   if (isCategoryHotkey(key)) return { kind: "cycleCategory" };
+  if (isThemeHotkey(key)) return { kind: "toggleTheme" };
   if (isProfileHotkey(key)) return { kind: "openProfile" };
 
   // Ready: hotkeys are live. 1/2/3 pick the duration; any other printable is
@@ -86,6 +88,11 @@ function isTab(key: KeyEvent): boolean {
 /** `c` (no modifiers) cycles the excerpt category. Ctrl-C is caught earlier. */
 function isCategoryHotkey(key: KeyEvent): boolean {
   return key.sequence === "c" && !key.ctrl && !key.meta && !key.option;
+}
+
+/** `t` (no modifiers) toggles the theme. Mid-run it's typed, not a hotkey. */
+function isThemeHotkey(key: KeyEvent): boolean {
+  return key.sequence === "t" && !key.ctrl && !key.meta && !key.option;
 }
 
 /** `p` (no modifiers) opens the profile screen. Mid-run it's typed, not a hotkey. */

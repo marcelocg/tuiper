@@ -15,6 +15,9 @@ export type Command =
   // the category filter and reloads.
   | { readonly kind: "nextExcerpt" }
   | { readonly kind: "cycleCategory" }
+  // Toggle the color theme (Slate ↔ Rush). Shell-owned: the shell swaps the
+  // active palette and persists it. A Ready/Finished hotkey — mid-run `t` types.
+  | { readonly kind: "toggleTheme" }
   // Open the profile screen (history trends). Shell-owned overlay; the engine
   // session is untouched. Only live in ready/finished — mid-run `p` types.
   | { readonly kind: "openProfile" }

@@ -4,6 +4,7 @@ import {
   TextRenderable,
   type CliRenderer,
   type KeyEvent as OpenTuiKeyEvent,
+  type RGBA,
 } from "@opentui/core";
 import { mapKeyToCommand } from "../engine/input_intent";
 import {
@@ -37,7 +38,17 @@ import { excerptsForLocale, type Excerpt } from "../corpus/corpus";
 import { SessionStore } from "../storage/session_store";
 import { FileStorage } from "../storage/file_storage";
 import { buildStoredSession } from "../storage/session_record";
-import { cellToChunk, chunk, heatCellToChunk, slate, type Chunk } from "./theme";
+import { SettingsStore } from "../storage/settings_store";
+import { FileSettingsStorage } from "../storage/settings_file_storage";
+import { nextTheme } from "../engine/theme";
+import {
+  cellToChunk,
+  chunk,
+  heatCellToChunk,
+  paletteFor,
+  type Chunk,
+  type Palette,
+} from "./theme";
 
 // Thin OpenTUI shell above the engine seam: it translates real key events into
 // engine commands, applies them, and renders engine view data to the terminal.
@@ -71,6 +82,10 @@ export async function runApp(): Promise<CliRenderer> {
   // locale-switch slice lands; the store feeds the speed band and receives
   // finished runs.
   const store = new SessionStore(new FileStorage());
+  // Persisted preferences (theme today; locale/duration/category later). Loaded
+  // once at boot; the active palette drives every screen and `t` swaps it.
+  const settings = new SettingsStore(new FileSettingsStorage());
+  let palette: Palette = paletteFor(settings.load().theme);
   const excerpts: readonly Excerpt[] = excerptsForLocale("en");
   let category = "random";
   let currentIndex: number | null = null; // null → nothing to exclude yet
@@ -162,22 +177,22 @@ export async function runApp(): Promise<CliRenderer> {
 
   function draw(now: number): void {
     if (overlay === "profile") {
-      header.content = buildHeader(state, now);
-      surface.content = buildProfilePanel(store, renderer.width, surfaceHeight());
+      header.content = buildHeader(state, now, palette);
+      surface.content = buildProfilePanel(store, renderer.width, surfaceHeight(), palette);
       raceStrip.content = "";
-      footer.content = buildFooter(state, category, overlay);
+      footer.content = buildFooter(state, category, overlay, palette);
       return;
     }
-    header.content = buildHeader(state, now);
+    header.content = buildHeader(state, now, palette);
     surface.content =
       sessionStatus(state) === "finished"
-        ? buildResultsPanel(state, now, renderer.width, surfaceHeight())
-        : buildSurface(state, renderer.width, surfaceHeight());
+        ? buildResultsPanel(state, now, renderer.width, surfaceHeight(), palette)
+        : buildSurface(state, renderer.width, surfaceHeight(), palette);
     // Anchor the race strip to the blank row just under the surface.
     raceStrip.top = SURFACE_TOP + surfaceHeight() + 1;
     raceStrip.content =
-      sessionStatus(state) === "active" ? buildRaceStrip(state, now, renderer.width) : "";
-    footer.content = buildFooter(state, category, overlay);
+      sessionStatus(state) === "active" ? buildRaceStrip(state, now, renderer.width, palette) : "";
+    footer.content = buildFooter(state, category, overlay, palette);
   }
 
   renderer.keyInput.on("keypress", (e: OpenTuiKeyEvent) => {
@@ -204,6 +219,15 @@ export async function runApp(): Promise<CliRenderer> {
     }
     if (cmd.kind === "openProfile") {
       overlay = "profile";
+      draw(now);
+      renderer.requestRender();
+      return;
+    }
+    // Theme toggle is a shell concern: swap the active palette, redraw every
+    // screen in it, and persist the choice (a write failure never interrupts).
+    if (cmd.kind === "toggleTheme") {
+      palette = paletteFor(nextTheme(palette.name));
+      settings.save({ theme: palette.name });
       draw(now);
       renderer.requestRender();
       return;
@@ -269,28 +293,26 @@ export async function runApp(): Promise<CliRenderer> {
 }
 
 /** Countdown / status line above the typing surface. */
-function buildHeader(state: SessionState, now: number): StyledText {
+function buildHeader(state: SessionState, now: number, palette: Palette): StyledText {
   const status = sessionStatus(state);
   if (status === "finished") {
     return new StyledText([
-      chunk(`Time! ${state.durationSeconds}s drill complete — `, slate.correct),
-      chunk("Ctrl-C to quit", slate.chrome),
+      chunk(`Time! ${state.durationSeconds}s drill complete — `, palette.correct),
+      chunk("Ctrl-C to quit", palette.chrome),
     ]);
   }
   const secs = remainingSeconds(state, now);
   const label = status === "active" ? "typing" : "ready";
   return new StyledText([
-    chunk(`${secs}s`, secs <= 5 ? slate.wrong : slate.chrome),
-    chunk(`  ·  ${label}`, slate.chrome),
+    chunk(`${secs}s`, secs <= 5 ? palette.wrong : palette.chrome),
+    chunk(`  ·  ${label}`, palette.chrome),
   ]);
 }
 
 /** Per-lane glyph color: the user chases the fast marker, ahead of the slow one. */
-const RACE_GLYPH_COLOR = {
-  slow: slate.pending,
-  you: slate.correct,
-  fast: slate.wrong,
-} as const;
+function raceGlyphColor(palette: Palette): Record<"slow" | "you" | "fast", RGBA> {
+  return { slow: palette.pending, you: palette.correct, fast: palette.wrong };
+}
 
 /**
  * The live race strip: three labeled lanes (Slow 60 / You / Fast 140) with a
@@ -298,7 +320,7 @@ const RACE_GLYPH_COLOR = {
  * computed from the same metrics the results panel uses so the chase matches the
  * final number.
  */
-function buildRaceStrip(state: SessionState, now: number, width: number): StyledText {
+function buildRaceStrip(state: SessionState, now: number, width: number, palette: Palette): StyledText {
   const elapsed = elapsedMs(state, now);
   const userWpm = calculateMetrics({
     typedEvents: state.events,
@@ -312,25 +334,26 @@ function buildRaceStrip(state: SessionState, now: number, width: number): Styled
     trackWidth,
   );
 
+  const glyphColor = raceGlyphColor(palette);
   const chunks: Chunk[] = [];
   lanes.forEach((lane, i) => {
-    chunks.push(chunk(`${lane.label.padEnd(LABEL_WIDTH)} `, slate.chrome));
-    if (lane.glyphIndex > 0) chunks.push(chunk(TRACK_FILL.repeat(lane.glyphIndex), slate.chrome));
-    chunks.push(chunk(lane.track[lane.glyphIndex]!, RACE_GLYPH_COLOR[lane.id]));
+    chunks.push(chunk(`${lane.label.padEnd(LABEL_WIDTH)} `, palette.chrome));
+    if (lane.glyphIndex > 0) chunks.push(chunk(TRACK_FILL.repeat(lane.glyphIndex), palette.chrome));
+    chunks.push(chunk(lane.track[lane.glyphIndex]!, glyphColor[lane.id]));
     const trailing = lane.track.length - lane.glyphIndex - 1;
-    if (trailing > 0) chunks.push(chunk(TRACK_FILL.repeat(trailing), slate.chrome));
+    if (trailing > 0) chunks.push(chunk(TRACK_FILL.repeat(trailing), palette.chrome));
     if (i < lanes.length - 1) chunks.push(chunk("\n"));
   });
   return new StyledText(chunks);
 }
 
 /** Render the current session onto the typing surface as a StyledText grid. */
-function buildSurface(state: SessionState, width: number, height: number): StyledText {
+function buildSurface(state: SessionState, width: number, height: number, palette: Palette): StyledText {
   const lines = wordWrap(computeCells(state), width);
   const win = visibleWindow(lines.length, cursorRow(lines), height);
   const chunks: Chunk[] = [];
   for (let r = win.start; r < win.end; r++) {
-    for (const cell of lines[r]!) chunks.push(cellToChunk(cell));
+    for (const cell of lines[r]!) chunks.push(cellToChunk(cell, palette));
     if (r < win.end - 1) chunks.push(chunk("\n"));
   }
   return new StyledText(chunks);
@@ -346,6 +369,7 @@ function buildResultsPanel(
   now: number,
   width: number,
   height: number,
+  palette: Palette,
 ): StyledText {
   const result = buildResult(state, now);
   // Accumulate rows (each a chunk list), then join with newlines once — the row
@@ -353,12 +377,12 @@ function buildResultsPanel(
   // no hand-kept line math can drift out of sync with what is emitted.
   const rows: Chunk[][] = [];
 
-  for (const line of formatResultPanel(result)) rows.push([chunk(line, slate.correct)]);
+  for (const line of formatResultPanel(result)) rows.push([chunk(line, palette.correct)]);
 
   const slowPairs = formatSlowPairs(result.digraphs.rankedPairs);
   if (slowPairs.length > 0) {
-    rows.push([], [chunk("Slowest pairs", slate.chrome)]);
-    for (const line of slowPairs) rows.push([chunk(line, slate.wrong)]);
+    rows.push([], [chunk("Slowest pairs", palette.chrome)]);
+    for (const line of slowPairs) rows.push([chunk(line, palette.wrong)]);
   }
 
   // Heat-map replay of the excerpt, wrapped to width and windowed to whatever
@@ -370,7 +394,7 @@ function buildResultsPanel(
     rows.push([]); // blank spacer above the heat map
     const win = visibleWindow(heatLines.length, 0, remaining);
     for (let r = win.start; r < win.end; r++) {
-      rows.push(heatLines[r]!.map((cell) => heatCellToChunk(cell, TRUECOLOR)));
+      rows.push(heatLines[r]!.map((cell) => heatCellToChunk(cell, palette, TRUECOLOR)));
     }
   }
 
@@ -388,7 +412,7 @@ function buildResultsPanel(
  * width/height. Read once per open/resize (never per-tick), so `store.all()`'s
  * compaction cost stays off the render loop.
  */
-function buildProfilePanel(store: SessionStore, width: number, height: number): StyledText {
+function buildProfilePanel(store: SessionStore, width: number, height: number, palette: Palette): StyledText {
   const chartWidth = Math.max(1, width);
   // Split the surface height between the two metric charts, reserving rows for
   // the title, the two stat headlines, and spacers (~5 chrome rows).
@@ -402,26 +426,31 @@ function buildProfilePanel(store: SessionStore, width: number, height: number): 
   const chunks: Chunk[] = [];
   visible.forEach((line, i) => {
     // Braille chart rows carry the trend color; text rows are chrome.
-    const color = /[⠀-⣿]/.test(line) ? slate.correct : slate.chrome;
+    const color = /[⠀-⣿]/.test(line) ? palette.correct : palette.chrome;
     chunks.push(chunk(line, color));
     if (i < visible.length - 1) chunks.push(chunk("\n"));
   });
   return new StyledText(chunks);
 }
 
-/** Persistent hint bar: duration + category + controls. */
-function buildFooter(state: SessionState, category: string, overlay: "profile" | null): StyledText {
+/** Persistent hint bar: duration + category + theme + controls. */
+function buildFooter(
+  state: SessionState,
+  category: string,
+  overlay: "profile" | null,
+  palette: Palette,
+): StyledText {
   if (overlay === "profile") {
-    return new StyledText([chunk("Profile · any key to close · Ctrl-C quit", slate.chrome)]);
+    return new StyledText([chunk("Profile · any key to close · Ctrl-C quit", palette.chrome)]);
   }
   // The duration hint only applies before a run starts (ready); mid-run it is
   // locked and post-run it is a settled fact.
   const gate = sessionStatus(state) === "ready" ? " · 1/2/3 duration" : "";
   return new StyledText([
     chunk(
-      `Duration ${state.durationSeconds}s · Category ${category}${gate} · ` +
-        `Tab next · c category · p profile · Bksp char · Ctrl-Bksp word · Ctrl-U line · Ctrl-C quit`,
-      slate.chrome,
+      `Duration ${state.durationSeconds}s · Category ${category} · Theme ${palette.name}${gate} · ` +
+        `Tab next · c category · t theme · p profile · Bksp char · Ctrl-Bksp word · Ctrl-U line · Ctrl-C quit`,
+      palette.chrome,
     ),
   ]);
 }

@@ -15,5 +15,8 @@ export type Command =
   // the category filter and reloads.
   | { readonly kind: "nextExcerpt" }
   | { readonly kind: "cycleCategory" }
+  // Open the profile screen (history trends). Shell-owned overlay; the engine
+  // session is untouched. Only live in ready/finished — mid-run `p` types.
+  | { readonly kind: "openProfile" }
   | { readonly kind: "quit" }
   | { readonly kind: "none" };

@@ -28,10 +28,18 @@ export function mapKeyToCommand(key: KeyEvent, state: SessionState): Command {
   if (isTab(key)) return { kind: "nextExcerpt" };
 
   if (sessionStatus(state) === "active") {
-    // Plain Backspace deletes the previous character. Ctrl/Alt-Backspace
-    // (delete-word) belongs to the later deletion slice. `c` here is typed
-    // input, not a category hotkey — mid-run every printable types.
-    if (isPlainBackspace(key)) return { kind: "deleteChar" };
+    // Deletion family. Plain Backspace deletes the previous character;
+    // Ctrl/Alt-Backspace deletes the previous word; Ctrl-U deletes to line
+    // start. In kitty mode Ctrl-Backspace carries `ctrl` and Alt-Backspace
+    // `meta`/`option`, so they're distinguishable from plain Backspace; in
+    // legacy mode both collapse to plain Backspace, so Ctrl-W is the
+    // delete-word fallback (spike gotcha #1). `c` here is typed input, not a
+    // category hotkey — mid-run every printable types.
+    if (isBackspace(key)) {
+      return hasDeleteModifier(key) ? { kind: "deleteWord" } : { kind: "deleteChar" };
+    }
+    if (isCtrlChord(key, "u")) return { kind: "deleteToLineStart" };
+    if (isCtrlChord(key, "w")) return { kind: "deleteWord" }; // legacy fallback
     if (isPrintable(key)) return { kind: "type", char: key.sequence };
     return NONE;
   }
@@ -78,8 +86,18 @@ function isCategoryHotkey(key: KeyEvent): boolean {
   return key.sequence === "c" && !key.ctrl && !key.meta && !key.option;
 }
 
-function isPlainBackspace(key: KeyEvent): boolean {
-  return key.name === "backspace" && !key.ctrl && !key.meta && !key.option;
+function isBackspace(key: KeyEvent): boolean {
+  return key.name === "backspace";
+}
+
+/** Ctrl/Alt(/Cmd)-Backspace → delete-word; any of these modifiers qualifies. */
+function hasDeleteModifier(key: KeyEvent): boolean {
+  return key.ctrl || key.meta || key.option;
+}
+
+/** A bare Ctrl-<letter> chord (no Alt/Cmd), e.g. Ctrl-U / Ctrl-W. */
+function isCtrlChord(key: KeyEvent, name: string): boolean {
+  return key.ctrl && !key.meta && !key.option && key.name === name;
 }
 
 function isPrintable(key: KeyEvent): boolean {

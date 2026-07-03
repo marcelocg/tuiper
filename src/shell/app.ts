@@ -20,6 +20,7 @@ import {
   computeCells,
   cursorRow,
   visibleWindow,
+  visualLineStartIndex,
   wordWrap,
 } from "../engine/typing_view";
 import { buildResult } from "../engine/session_result";
@@ -160,7 +161,21 @@ export async function runApp(): Promise<CliRenderer> {
       renderer.requestRender();
       return;
     }
-    const next = applyCommand(state, cmd, now);
+    // Delete-to-line-start needs the terminal width to find the visual line
+    // start — the one deletion count the pure mapper can't resolve. Fill it in
+    // here (the shell owns width), then let the engine apply the count.
+    const resolved =
+      cmd.kind === "deleteToLineStart"
+        ? {
+            ...cmd,
+            toIndex: visualLineStartIndex(
+              state.target,
+              state.input.length,
+              renderer.width,
+            ),
+          }
+        : cmd;
+    const next = applyCommand(state, resolved, now);
     if (next !== state) {
       state = next;
       draw(now);
@@ -245,7 +260,7 @@ function buildFooter(state: SessionState, category: string): StyledText {
   return new StyledText([
     chunk(
       `Duration ${state.durationSeconds}s · Category ${category}${gate} · ` +
-        `Tab next · c category · Backspace correct · Ctrl-C quit`,
+        `Tab next · c category · Bksp char · Ctrl-Bksp word · Ctrl-U line · Ctrl-C quit`,
       slate.chrome,
     ),
   ]);

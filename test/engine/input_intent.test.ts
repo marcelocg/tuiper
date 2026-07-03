@@ -46,6 +46,17 @@ describe("mapKeyToCommand — active run", () => {
     });
   });
 
+  test("bare u / w type themselves (only the Ctrl chord commands)", () => {
+    expect(mapKeyToCommand(key({ name: "u", sequence: "u" }), active)).toEqual({
+      kind: "type",
+      char: "u",
+    });
+    expect(mapKeyToCommand(key({ name: "w", sequence: "w" }), active)).toEqual({
+      kind: "type",
+      char: "w",
+    });
+  });
+
   test("plain Backspace deletes a character", () => {
     expect(
       mapKeyToCommand(key({ name: "backspace", sequence: "\x7f" }), active),
@@ -64,13 +75,40 @@ describe("mapKeyToCommand — active run", () => {
     ).toEqual({ kind: "none" });
   });
 
-  test("Alt/Ctrl-Backspace is not a plain char delete (reserved for delete-word)", () => {
+  test("Ctrl-Backspace deletes the previous word (kitty ctrl:true)", () => {
     expect(
       mapKeyToCommand(
         key({ name: "backspace", sequence: "\x7f", ctrl: true }),
         active,
       ),
-    ).toEqual({ kind: "none" });
+    ).toEqual({ kind: "deleteWord" });
+  });
+
+  test("Alt-Backspace deletes the previous word (kitty meta/option:true)", () => {
+    expect(
+      mapKeyToCommand(
+        key({ name: "backspace", sequence: "\x7f", meta: true }),
+        active,
+      ),
+    ).toEqual({ kind: "deleteWord" });
+    expect(
+      mapKeyToCommand(
+        key({ name: "backspace", sequence: "\x7f", option: true }),
+        active,
+      ),
+    ).toEqual({ kind: "deleteWord" });
+  });
+
+  test("Ctrl-W deletes the previous word (legacy delete-word fallback)", () => {
+    expect(
+      mapKeyToCommand(key({ name: "w", sequence: "\x17", ctrl: true }), active),
+    ).toEqual({ kind: "deleteWord" });
+  });
+
+  test("Ctrl-U deletes to line start (intent-only; shell resolves the index)", () => {
+    expect(
+      mapKeyToCommand(key({ name: "u", sequence: "\x15", ctrl: true }), active),
+    ).toEqual({ kind: "deleteToLineStart" });
   });
 
   test("Enter produces no command mid-run; Tab loads the next excerpt", () => {

@@ -1,6 +1,8 @@
 import {
   calculateMetrics,
+  summarizeDigraphs,
   summarizeWords,
+  type DigraphSummary,
   type Metrics,
   type WordSummary,
 } from "./metrics";
@@ -12,9 +14,10 @@ import {
 } from "./session_state";
 
 // The finished-run result: the metrics a user sees plus the fine-grained
-// per-character and per-word timings the PRD requires captured. A pure
+// per-character and per-word timings the PRD requires captured, and the
+// post-run digraph (slow-pair) analysis that drives the heat map. A pure
 // projection of session state (frank_type's `toResult`, trimmed to the metrics
-// slice — id/excerpt metadata, persistence and digraphs are separate issues).
+// slice — id/excerpt metadata and persistence are separate issues).
 
 export interface SessionResult {
   readonly durationSeconds: number;
@@ -24,6 +27,8 @@ export interface SessionResult {
   readonly characterTimings: readonly CharTiming[];
   /** Per-word timing summaries derived from the character timings. */
   readonly wordTimings: readonly WordSummary[];
+  /** Slow adjacent-pair analysis: heated samples + ranked pairs (post-run). */
+  readonly digraphs: DigraphSummary;
 }
 
 export function buildResult(state: SessionState, now: number): SessionResult {
@@ -41,5 +46,9 @@ export function buildResult(state: SessionState, now: number): SessionResult {
     metrics,
     characterTimings: state.timings,
     wordTimings: summarizeWords({ text: state.target, characterTimings: state.timings }),
+    digraphs: summarizeDigraphs({
+      characterTimings: state.timings,
+      keyEvents: state.events,
+    }),
   };
 }

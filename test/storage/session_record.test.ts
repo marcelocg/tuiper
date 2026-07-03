@@ -38,6 +38,7 @@ const result: SessionResult = {
   },
   characterTimings: [],
   wordTimings: [],
+  digraphs: { samples: [], rankedPairs: [], medianLatencyMs: 0 },
 };
 
 describe("buildStoredSession", () => {

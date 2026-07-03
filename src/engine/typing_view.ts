@@ -13,6 +13,8 @@ export interface CharCell {
   readonly status: CharStatus;
   /** True for the single cell under the block cursor. */
   readonly cursor: boolean;
+  /** Post-run digraph heat (0–1) for the heat-map replay; absent while typing. */
+  readonly heat?: number;
 }
 
 /**

@@ -25,5 +25,11 @@ export type Command =
   // Open the profile screen (history trends). Shell-owned overlay; the engine
   // session is untouched. Only live in ready/finished — mid-run `p` types.
   | { readonly kind: "openProfile" }
+  // Open the help overlay (all keybindings). Shell-owned overlay; the engine
+  // session is untouched. Only live in ready/finished — mid-run `?` types.
+  | { readonly kind: "openHelp" }
+  // Open the sources screen (per-excerpt attribution). Shell-owned overlay; the
+  // engine session is untouched. Only live in ready/finished — mid-run `s` types.
+  | { readonly kind: "openSources" }
   | { readonly kind: "quit" }
   | { readonly kind: "none" };

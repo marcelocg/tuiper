@@ -33,6 +33,8 @@ import { buildResult } from "../engine/session_result";
 import { formatResultPanel } from "../engine/results_view";
 import { buildProfile } from "../engine/profile";
 import { formatProfile } from "../engine/profile_view";
+import { formatHelp } from "../engine/help_view";
+import { formatSources } from "../engine/sources_view";
 import { preferredSpeedBand, randomExcerptIndex } from "../engine/speed_band";
 import { excerptsForLocale, type Excerpt } from "../corpus/corpus";
 import { SessionStore } from "../storage/session_store";
@@ -73,6 +75,29 @@ function nextCategory(current: string): string {
   return CATEGORIES[(i + 1) % CATEGORIES.length]!;
 }
 
+/** Shell-owned full-screen overlays over the session (the engine is untouched). */
+type Overlay = "profile" | "help" | "sources";
+
+/** Signed scroll step a key requests within a scrollable overlay (0 = none). */
+function scrollDelta(key: OpenTuiKeyEvent, page: number): number {
+  switch (key.name) {
+    case "up":
+      return -1;
+    case "down":
+      return 1;
+    case "pageup":
+      return -page;
+    case "pagedown":
+      return page;
+    default:
+      if (key.sequence === "k") return -1;
+      if (key.sequence === "j") return 1;
+      return 0;
+  }
+}
+
+const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, n));
+
 export async function runApp(): Promise<CliRenderer> {
   const renderer = await createCliRenderer({
     targetFps: 10, // ~100ms tick (frank_type cadence)
@@ -96,9 +121,11 @@ export async function runApp(): Promise<CliRenderer> {
   let category = "random";
   let currentIndex: number | null = null; // null → nothing to exclude yet
   let saved = false;
-  // Profile is a shell-owned overlay (history trends) over the session — it
-  // pauses nothing; the session is untouched. Any key but Ctrl-C closes it.
-  let overlay: "profile" | null = null;
+  // Shell-owned overlays (profile trends, help, sources) over the session — they
+  // pause nothing; the session is untouched. Only Ctrl-C quits from an overlay;
+  // any other key closes profile/help, while sources scrolls (Esc/q close it).
+  let overlay: Overlay | null = null;
+  let overlayScroll = 0; // top visible line of the active scrollable overlay
   // The speed band only changes when a finished run is saved, so read it from
   // history once here and refresh it after each save — not on every excerpt
   // load, which would re-read (and re-compact) sessions.json on the render path.
@@ -181,12 +208,45 @@ export async function runApp(): Promise<CliRenderer> {
     return Math.max(1, renderer.height - SURFACE_TOP - FOOTER_RESERVE - RACE_STRIP_ROWS);
   }
 
+  /**
+   * Height available to a full-screen overlay. Overlays blank the race strip, so
+   * unlike the typing surface they reclaim those rows — the extra height keeps
+   * the help/sources panels from clipping their tail on shorter terminals.
+   */
+  function overlayHeight(): number {
+    return Math.max(1, renderer.height - SURFACE_TOP - FOOTER_RESERVE);
+  }
+
+  /**
+   * The full (unwindowed) content lines of the active scrollable overlay, or null
+   * for a non-scrollable one. Help and sources come from pure, cheap formatters,
+   * so recomputing per scroll keypress is fine; profile reads history (compaction
+   * cost) and is drawn from a fixed layout, so it is not scrolled here.
+   */
+  function overlayContentLines(): string[] | null {
+    if (overlay === "help") return formatHelp(strings.help);
+    if (overlay === "sources") return formatSources(excerpts, strings.sources);
+    return null;
+  }
+
   function draw(now: number): void {
-    if (overlay === "profile") {
+    if (overlay) {
       header.content = buildHeader(state, now, palette, strings);
-      surface.content = buildProfilePanel(store, renderer.width, surfaceHeight(), palette, strings);
       raceStrip.content = "";
       footer.content = buildFooter(state, category, overlay, palette, locale, strings);
+      const h = overlayHeight();
+      surface.content =
+        overlay === "profile"
+          ? buildProfilePanel(store, renderer.width, h, palette, strings)
+          : overlay === "help"
+            ? buildScrollPanel(formatHelp(strings.help), overlayScroll, renderer.width, h, palette)
+            : buildScrollPanel(
+                formatSources(excerpts, strings.sources),
+                overlayScroll,
+                renderer.width,
+                h,
+                palette,
+              );
       return;
     }
     header.content = buildHeader(state, now, palette, strings);
@@ -205,17 +265,32 @@ export async function runApp(): Promise<CliRenderer> {
 
   renderer.keyInput.on("keypress", (e: OpenTuiKeyEvent) => {
     const now = performance.now(); // stamp on receipt (input is per-keystroke)
-    // While the profile overlay is up, keys don't reach the session: Ctrl-C
-    // quits, any other key dismisses the overlay back to the run.
+    // While an overlay is up, keys don't reach the session. Ctrl-C still quits
+    // the app; every other key stays inside the overlay (`q` here closes it, it
+    // does not quit — see the sources/help close hints).
     if (overlay) {
-      if (mapKeyToCommand(e, state).kind === "quit") {
+      // Ignore kitty release/repeat events — only a fresh press acts, so holding
+      // the key that opened the overlay can't immediately close it.
+      if (e.eventType === "release" || e.eventType === "repeat") return;
+      if (e.ctrl && !e.meta && !e.option && e.name === "c") {
         cleanup(renderer);
         return;
       }
-      // Ignore kitty release/repeat events — only a fresh press dismisses, so
-      // holding the key that opened the overlay can't immediately close it.
-      if (e.eventType === "release" || e.eventType === "repeat") return;
+      // Help and sources scroll: nav keys move the viewport; Esc/q/any other key
+      // closes. Profile is a fixed layout — any key closes it.
+      const content = overlayContentLines();
+      if (content) {
+        const delta = scrollDelta(e, Math.max(1, overlayHeight() - 1));
+        if (delta !== 0) {
+          const maxScroll = Math.max(0, content.length - overlayHeight());
+          overlayScroll = clamp(overlayScroll + delta, 0, maxScroll);
+          draw(now);
+          renderer.requestRender();
+          return;
+        }
+      }
       overlay = null;
+      overlayScroll = 0;
       draw(now);
       renderer.requestRender();
       return;
@@ -225,8 +300,10 @@ export async function runApp(): Promise<CliRenderer> {
       cleanup(renderer);
       return;
     }
-    if (cmd.kind === "openProfile") {
-      overlay = "profile";
+    if (cmd.kind === "openProfile" || cmd.kind === "openHelp" || cmd.kind === "openSources") {
+      overlay =
+        cmd.kind === "openProfile" ? "profile" : cmd.kind === "openHelp" ? "help" : "sources";
+      overlayScroll = 0;
       draw(now);
       renderer.requestRender();
       return;
@@ -482,17 +559,73 @@ function buildProfilePanel(
   return new StyledText(chunks);
 }
 
+/**
+ * A scrollable text overlay (help keybindings, sources attribution): window
+ * `lines` to `height` from the `scroll` offset (top visible line) and paint it.
+ * Both overlays share this — help is short and usually shows whole, sources
+ * (PRD story 47) can exceed the surface for a long corpus and scrolls. The real
+ * title (line 0) is emphasized only when it is actually in view; once scrolled
+ * past, every visible row is chrome (no entry masquerades as the heading).
+ */
+function buildScrollPanel(
+  lines: readonly string[],
+  scroll: number,
+  width: number,
+  height: number,
+  palette: Palette,
+): StyledText {
+  const maxScroll = Math.max(0, lines.length - height);
+  const start = clamp(scroll, 0, maxScroll);
+  const visible = lines.slice(start, start + height);
+  return panelFromLines(visible, start === 0, width, palette);
+}
+
+/**
+ * Paint text lines as a StyledText: the title row emphasized (only when
+ * `titleVisible`, i.e. it is the true top line), rest chrome. Each line is
+ * clipped to `width` (the surface never wraps) so a long attribution can't spill
+ * past the terminal edge into the footer.
+ */
+function panelFromLines(
+  lines: readonly string[],
+  titleVisible: boolean,
+  width: number,
+  palette: Palette,
+): StyledText {
+  const chunks: Chunk[] = [];
+  lines.forEach((line, i) => {
+    const color = titleVisible && i === 0 ? palette.correct : palette.chrome;
+    chunks.push(chunk(clipTo(line, width), color));
+    if (i < lines.length - 1) chunks.push(chunk("\n"));
+  });
+  return new StyledText(chunks);
+}
+
+/** Clip a line to at most `width` cells, marking truncation with an ellipsis. */
+function clipTo(line: string, width: number): string {
+  const chars = [...line];
+  if (chars.length <= width) return line;
+  if (width <= 1) return chars.slice(0, Math.max(0, width)).join("");
+  return chars.slice(0, width - 1).join("") + "…";
+}
+
 /** Persistent hint bar: duration + category + theme + locale + controls. */
 function buildFooter(
   state: SessionState,
   category: string,
-  overlay: "profile" | null,
+  overlay: Overlay | null,
   palette: Palette,
   locale: Locale,
   strings: UIStrings,
 ): StyledText {
-  if (overlay === "profile") {
-    return new StyledText([chunk(strings.profile.closeHint, palette.chrome)]);
+  if (overlay) {
+    const closeHint =
+      overlay === "profile"
+        ? strings.profile.closeHint
+        : overlay === "help"
+          ? strings.help.closeHint
+          : strings.sources.closeHint;
+    return new StyledText([chunk(closeHint, palette.chrome)]);
   }
   const f = strings.footer;
   // The duration hint only applies before a run starts (ready); mid-run it is

@@ -256,6 +256,10 @@ export function applyCommand(
       // locked; once finished, the run's length is a fact and must not change.
       if (sessionStatus(state) !== "ready") return state;
       return { ...state, durationSeconds: cmd.seconds };
+    // Excerpt selection replaces the whole session and needs the corpus + rng,
+    // so it is the shell's job — a no-op at the engine level.
+    case "nextExcerpt":
+    case "cycleCategory":
     case "quit":
     case "none":
       return state;

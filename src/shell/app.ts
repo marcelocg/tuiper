@@ -13,6 +13,7 @@ import {
   remainingSeconds,
   sessionStatus,
   shouldFinish,
+  DEFAULT_DURATION_SECONDS,
   type SessionState,
 } from "../engine/session_state";
 import {
@@ -23,6 +24,11 @@ import {
 } from "../engine/typing_view";
 import { buildResult } from "../engine/session_result";
 import { formatResultPanel } from "../engine/results_view";
+import { preferredSpeedBand, randomExcerptIndex } from "../engine/speed_band";
+import { excerptsForLocale, type Excerpt } from "../corpus/corpus";
+import { SessionStore } from "../storage/session_store";
+import { FileStorage } from "../storage/file_storage";
+import { buildStoredSession } from "../storage/session_record";
 import { cellToChunk, chunk, slate, type Chunk } from "./theme";
 
 // Thin OpenTUI shell above the engine seam: it translates real key events into
@@ -31,12 +37,16 @@ import { cellToChunk, chunk, slate, type Chunk } from "./theme";
 // The shell owns exactly two impure jobs: stamping `performance.now()` on each
 // key/tick, and driving the 100ms countdown/auto-finish loop.
 
-const EXCERPT =
-  "It is a truth universally acknowledged, that a single man in possession " +
-  "of a good fortune, must be in want of a wife.";
-
 const SURFACE_TOP = 2;
 const FOOTER_RESERVE = 2; // blank line + footer
+
+/** Category filter cycle for the `c` hotkey (PRD keymap). */
+const CATEGORIES = ["random", "scifi", "fantasy", "biography"] as const;
+
+function nextCategory(current: string): string {
+  const i = CATEGORIES.indexOf(current as (typeof CATEGORIES)[number]);
+  return CATEGORIES[(i + 1) % CATEGORIES.length]!;
+}
 
 export async function runApp(): Promise<CliRenderer> {
   const renderer = await createCliRenderer({
@@ -45,7 +55,60 @@ export async function runApp(): Promise<CliRenderer> {
     exitOnCtrlC: false, // we handle quit ourselves
   });
 
-  let state: SessionState = createSession(EXCERPT);
+  // Corpus + adaptive selection (#5). Locale is fixed to English until the
+  // locale-switch slice lands; the store feeds the speed band and receives
+  // finished runs.
+  const store = new SessionStore(new FileStorage());
+  const excerpts: readonly Excerpt[] = excerptsForLocale("en");
+  let category = "random";
+  let currentIndex: number | null = null; // null → nothing to exclude yet
+  let saved = false;
+  // The speed band only changes when a finished run is saved, so read it from
+  // history once here and refresh it after each save — not on every excerpt
+  // load, which would re-read (and re-compact) sessions.json on the render path.
+  let band = preferredSpeedBand(store.all());
+
+  let state: SessionState = createSession(
+    excerpts[0]?.normalized_text ?? "",
+    DEFAULT_DURATION_SECONDS,
+  );
+
+  /** Pick a fresh excerpt for the current category, banded by recent history. */
+  function loadExcerpt(): void {
+    currentIndex = randomExcerptIndex(excerpts, {
+      category,
+      except: currentIndex,
+      speedBand: band,
+    });
+    state = createSession(
+      excerpts[currentIndex]?.normalized_text ?? "",
+      state.durationSeconds,
+    );
+    saved = false;
+  }
+
+  /** Persist a finished run once, stamping wall-clock timestamps. */
+  function persistIfFinished(now: number): void {
+    if (sessionStatus(state) !== "finished" || saved) return;
+    const excerpt = currentIndex === null ? undefined : excerpts[currentIndex];
+    if (!excerpt) return;
+    saved = true;
+    const result = buildResult(state, now);
+    const finishedMs = Date.now();
+    try {
+      store.save(
+        buildStoredSession(result, excerpt, {
+          startedAt: new Date(finishedMs - result.elapsedMs).toISOString(),
+          finishedAt: new Date(finishedMs).toISOString(),
+        }),
+      );
+      band = preferredSpeedBand(store.all()); // refresh band from new history
+    } catch {
+      // History write failures must not crash an active session.
+    }
+  }
+
+  loadExcerpt(); // initial banded pick
 
   const header = new TextRenderable(renderer, {
     content: "",
@@ -78,7 +141,7 @@ export async function runApp(): Promise<CliRenderer> {
       sessionStatus(state) === "finished"
         ? buildResultsPanel(state, now)
         : buildSurface(state, renderer.width, surfaceHeight());
-    footer.content = buildFooter(state);
+    footer.content = buildFooter(state, category);
   }
 
   renderer.keyInput.on("keypress", (e: OpenTuiKeyEvent) => {
@@ -86,6 +149,15 @@ export async function runApp(): Promise<CliRenderer> {
     const cmd = mapKeyToCommand(e, state);
     if (cmd.kind === "quit") {
       cleanup(renderer);
+      return;
+    }
+    // Excerpt selection replaces the whole session (impure: corpus + rng), so
+    // the shell owns it rather than the engine.
+    if (cmd.kind === "nextExcerpt" || cmd.kind === "cycleCategory") {
+      if (cmd.kind === "cycleCategory") category = nextCategory(category);
+      loadExcerpt();
+      draw(now);
+      renderer.requestRender();
       return;
     }
     const next = applyCommand(state, cmd, now);
@@ -112,7 +184,10 @@ export async function runApp(): Promise<CliRenderer> {
   renderer.setFrameCallback(async () => {
     if (sessionStatus(state) !== "active") return;
     const now = performance.now();
-    if (shouldFinish(state, now)) state = finish(state, now);
+    if (shouldFinish(state, now)) {
+      state = finish(state, now);
+      persistIfFinished(now); // append the finished run to local history
+    }
     draw(now);
     renderer.requestRender();
   });
@@ -162,14 +237,15 @@ function buildResultsPanel(state: SessionState, now: number): StyledText {
   return new StyledText(chunks);
 }
 
-/** Persistent hint bar: duration + controls. */
-function buildFooter(state: SessionState): StyledText {
+/** Persistent hint bar: duration + category + controls. */
+function buildFooter(state: SessionState, category: string): StyledText {
   // The duration hint only applies before a run starts (ready); mid-run it is
   // locked and post-run it is a settled fact.
   const gate = sessionStatus(state) === "ready" ? " · 1/2/3 duration" : "";
   return new StyledText([
     chunk(
-      `Duration ${state.durationSeconds}s${gate} · Backspace correct · Ctrl-C quit`,
+      `Duration ${state.durationSeconds}s · Category ${category}${gate} · ` +
+        `Tab next · c category · Backspace correct · Ctrl-C quit`,
       slate.chrome,
     ),
   ]);

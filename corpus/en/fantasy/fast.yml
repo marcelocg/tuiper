@@ -1,0 +1,149 @@
+- id: stoker-dracula-fast-1
+  title: Dracula
+  author: Bram Stoker
+  source: "Project Gutenberg ebook #345"
+  source_url: https://www.gutenberg.org/ebooks/345
+  text: >
+    I had for breakfast more paprika, and a sort of porridge of maize flour which
+    they said was mamaliga, and egg plant stuffed with forcemeat, a very
+    excellent dish, which they call impletata. I had to hurry breakfast, for the
+    train started a little before eight, or rather it ought to have done so, for
+    after rushing to the station at half past seven I had to sit in the carriage
+    for more than an hour before we began to move.
+- id: stevenson-jekyll-hyde-fast-1
+  title: Strange Case of Dr. Jekyll and Mr. Hyde
+  author: Robert Louis Stevenson
+  source: "Project Gutenberg ebook #43"
+  source_url: https://www.gutenberg.org/ebooks/43
+  text: >
+    Mr. Utterson the lawyer was a man of a rugged countenance, that was never
+    lighted by a smile, cold, scanty and embarrassed in discourse, backward in
+    sentiment, lean, long, dusty, dreary, and yet somehow lovable. At friendly
+    meetings, and when the wine was to his taste, something eminently human
+    beaconed from his eye, something indeed which never found its way into his
+    talk, but which spoke not only in these silent symbols of the after dinner
+    face, but more often and loudly in the acts of his life.
+- id: james-turn-screw-fast-1
+  title: The Turn of the Screw
+  author: Henry James
+  source: "Project Gutenberg ebook #209"
+  source_url: https://www.gutenberg.org/ebooks/209
+  text: >
+    The story had held us, round the fire, sufficiently breathless, but except
+    the obvious remark that it was gruesome, as on Christmas Eve in an old house
+    a strange tale should essentially be, I remember no comment uttered till
+    somebody happened to say that it was the only case he had met in which such a
+    visitation had fallen on a child. The case, I may mention, was that of an
+    apparition in just such an old house as had gathered us for the occasion.
+
+- id: dunsany-elfland-fast-1
+  title: "The King of Elfland's Daughter"
+  author: "Lord Dunsany"
+  source: "Project Gutenberg ebook #61077"
+  source_url: https://www.gutenberg.org/ebooks/61077
+  text: >
+    When Alveric came to the enchanted wood the light in which Elfland glowed had
+    neither grown nor dwindled, and he saw that it came from no radiance that
+    shines on the fields we know, unless the wandering lights of wonderful moments
+    that sometimes astonish our fields, and are gone the instant they come, are
+    strayed over the border of Elfland by some momentary disorder of magic.
+    Neither sun nor moon made the light of that enchanted day. A line of pine
+    trees up which ivy climbed, as high as their lowering black foliage, stood
+    like sentinels at the edge of the wood. The silver spires were shining as
+    though it were they that made all this azure glow in which Elfland swam. And
+    Alveric having by now come far into Elfland, and being now before its capital
+    palace, and knowing that Elfland guarded its mysteries well, drew his father's
+    sword before he entered the wood..
+- id: dunsany-book-wonder-fast-1
+  title: "The Book of Wonder"
+  author: "Lord Dunsany"
+  source: "Project Gutenberg ebook #7477"
+  source_url: https://www.gutenberg.org/ebooks/7477
+  text: >
+    The Gibbelins eat, as is well known, nothing less good than man. Their evil
+    tower is joined to Terra Cognita, to the lands we know, by a bridge. Their
+    hoard is beyond reason; avarice has no use for it; they have a separate cellar
+    for emeralds and a separate cellar for sapphires; they have filled a hole with
+    gold and dig it up when they need it. And the only use that is known for their
+    ridiculous wealth is to attract to their larder a continual supply of food. In
+    times of famine they have even been known to scatter rubies abroad, a little
+    trail of them to some city of Man, and sure enough their larders would soon be
+    full again.
+- id: eddison-worm-ouroboros-fast-1
+  title: "The Worm Ouroboros: A Romance"
+  author: "E. R. Eddison"
+  source: "Project Gutenberg ebook #67090"
+  source_url: https://www.gutenberg.org/ebooks/67090
+  text: >
+    There was a man named Lessingham dwelt in an old low house in Wastdale, set in
+    a gray old garden where yew-trees flourished that had seen Vikings in Copeland
+    in their seedling time. Lily and rose and larkspur bloomed in the borders, and
+    begonias with blossoms big as saucers, red and white and pink and
+    lemon-colour, in the beds before the porch. Climbing roses, honeysuckle,
+    clematis, and the scarlet flame-flower scrambled up the walls. Thick woods
+    were on every side without the garden, with a gap north-eastward opening on
+    the desolate lake and the great fells beyond it: Gable rearing his crag-bound
+    head against the sky from behind the straight clean outline of the Screes.
+- id: mirrlees-lud-mist-fast-1
+  title: "Lud-in-the-Mist"
+  author: "Hope Mirrlees"
+  source: "Project Gutenberg ebook #68061"
+  source_url: https://www.gutenberg.org/ebooks/68061
+  text: >
+    The Free State of Dorimare was a very small country, but, seeing that it was
+    bounded on the south by the sea and on the north and east by mountains, while
+    its centre consisted of a rich plain, watered by two rivers, a considerable
+    variety of scenery and vegetation was to be found within its borders. Indeed,
+    towards the west, in striking contrast with the pastoral sobriety of the
+    central plain, the aspect of the country became, if not tropical, at any rate
+    distinctly exotic. Nor was this to be wondered at, perhaps; for beyond the
+    Debatable Hills (the boundary of Dorimare in the west) lay Fairyland. There
+    had, however, been no intercourse between the two countries for many
+    centuries.
+- id: macdonald-phantastes-fast-1
+  title: "Phantastes: A Faerie Romance for Men and Women"
+  author: "George MacDonald"
+  source: "Project Gutenberg ebook #325"
+  source_url: https://www.gutenberg.org/ebooks/325
+  text: >
+    After washing as well as I could in the clear stream, I rose and looked around
+    me. The tree under which I seemed to have lain all night was one of the
+    advanced guard of a dense forest, towards which the rivulet ran. Faint traces
+    of a footpath, much overgrown with grass and moss, and with here and there a
+    pimpernel even, were discernible along the right bank. “This,” thought I,
+    “must surely be the path into Fairy Land, which the lady of last night
+    promised I should so soon find.” I crossed the rivulet, and accompanied it,
+    keeping the footpath on its right bank, until it led me, as I expected, into
+    the wood. Here I left it, without any good reason: and with a vague feeling
+    that I ought to have followed its course, I took a more southerly direction.
+- id: lang-blue-fairy-fast-1
+  title: "The Blue Fairy Book"
+  author: "Andrew Lang"
+  source: "Project Gutenberg ebook #503"
+  source_url: https://www.gutenberg.org/ebooks/503
+  text: >
+    So the gardener allowed himself to be persuaded, and went away with the
+    messengers, taking his wife and his son with him; and the King, delighted to
+    have found a real gardener, entrusted him with the care of his garden. The man
+    found no difficulty in making the royal garden produce flowers and fruit, and
+    at the end of a year the park was not like the same place, and the King
+    showered gifts upon his new servant. The gardener, as you have heard already,
+    had a son, who was a very handsome young man, with most agreeable manners, and
+    every day he carried the best fruit of the garden to the King, and all the
+    prettiest flowers to his daughter. Now this princess was wonderfully pretty
+    and was just sixteen years old, and the King was beginning to think it was
+    time that she should be married.
+- id: nesbit-enchanted-castle-fast-1
+  title: "The Enchanted Castle"
+  author: "E. Nesbit"
+  source: "Project Gutenberg ebook #34219"
+  source_url: https://www.gutenberg.org/ebooks/34219
+  text: >
+    "No," said the Princess suddenly, "no; I can't give wishes to _you_, it only
+    gives me wishes. But I'll let you see the ring make _me_ invisible. Only you
+    must shut your eyes while I do it." "Your tea!" Gerald's tone was full of
+    contempt. "The lovely Princess," he went on, "reappeared as soon as our hero
+    had finished counting fifty. One, two, three, four----" Gerald and Kathleen
+    had both closed their eyes. But somehow Jimmy hadn't. He didn't mean to cheat,
+    he just forgot. And as Gerald's count reached twenty he saw a panel under the
+    window open slowly.

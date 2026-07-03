@@ -73,9 +73,10 @@ describe("mapKeyToCommand — active run", () => {
     ).toEqual({ kind: "none" });
   });
 
-  test("control keys like Tab / Enter produce no command in the skeleton", () => {
+  test("Enter produces no command mid-run; Tab loads the next excerpt", () => {
+    // Tab is a live control key even mid-run (excerpt selection, see #5).
     expect(mapKeyToCommand(key({ name: "tab", sequence: "\t" }), active)).toEqual({
-      kind: "none",
+      kind: "nextExcerpt",
     });
     expect(
       mapKeyToCommand(key({ name: "return", sequence: "\r" }), active),

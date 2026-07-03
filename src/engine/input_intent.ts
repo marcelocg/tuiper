@@ -23,13 +23,21 @@ export function mapKeyToCommand(key: KeyEvent, state: SessionState): Command {
     return { kind: "quit" };
   }
 
+  // Tab is a control key in every state (PRD: live even mid-run) — it loads the
+  // next excerpt. Excerpts are normalized to spaces, so Tab is never content.
+  if (isTab(key)) return { kind: "nextExcerpt" };
+
   if (sessionStatus(state) === "active") {
     // Plain Backspace deletes the previous character. Ctrl/Alt-Backspace
-    // (delete-word) belongs to the later deletion slice.
+    // (delete-word) belongs to the later deletion slice. `c` here is typed
+    // input, not a category hotkey — mid-run every printable types.
     if (isPlainBackspace(key)) return { kind: "deleteChar" };
     if (isPrintable(key)) return { kind: "type", char: key.sequence };
     return NONE;
   }
+
+  // Ready / Finished: `c` cycles the category filter (then reloads an excerpt).
+  if (isCategoryHotkey(key)) return { kind: "cycleCategory" };
 
   // Ready: hotkeys are live. 1/2/3 pick the duration; any other printable is
   // the first keystroke, which starts (and types into) the run. Duration is
@@ -41,7 +49,8 @@ export function mapKeyToCommand(key: KeyEvent, state: SessionState): Command {
     if (isPrintable(key)) return { kind: "type", char: key.sequence };
   }
 
-  // Finished: only Ctrl-C (handled above) does anything until restart lands.
+  // Finished: only Ctrl-C, Tab, and `c` (handled above) do anything until
+  // restart lands.
   return NONE;
 }
 
@@ -58,6 +67,15 @@ function durationHotkey(key: KeyEvent): number | null {
     default:
       return null;
   }
+}
+
+function isTab(key: KeyEvent): boolean {
+  return key.name === "tab" && !key.ctrl && !key.meta && !key.option;
+}
+
+/** `c` (no modifiers) cycles the excerpt category. Ctrl-C is caught earlier. */
+function isCategoryHotkey(key: KeyEvent): boolean {
+  return key.sequence === "c" && !key.ctrl && !key.meta && !key.option;
 }
 
 function isPlainBackspace(key: KeyEvent): boolean {

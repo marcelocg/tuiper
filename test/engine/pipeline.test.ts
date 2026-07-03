@@ -18,9 +18,11 @@ function feed(state: SessionState, keys: KeyEvent[]): SessionState {
 }
 
 describe("keystroke -> engine pipeline", () => {
+  // Sample text avoids the ready-state hotkeys (1/2/3 duration, c category):
+  // in Ready those are commands, not typed input, so a run can't begin with one.
   test("typing the excerpt correctly marks every char correct", () => {
-    const state = feed(createSession("cat"), [press("c"), press("a"), press("t")]);
-    expect(state.input).toBe("cat");
+    const state = feed(createSession("dog"), [press("d"), press("o"), press("g")]);
+    expect(state.input).toBe("dog");
     expect(computeCells(state).map((c) => c.status)).toEqual([
       "correct",
       "correct",
@@ -30,11 +32,11 @@ describe("keystroke -> engine pipeline", () => {
   });
 
   test("a wrong key colors the expected char red and Backspace fixes it", () => {
-    let state = feed(createSession("cat"), [press("c"), press("x")]);
+    let state = feed(createSession("dog"), [press("d"), press("x")]);
     expect(computeCells(state)[1]!.status).toBe("wrong");
 
-    state = feed(state, [key({ name: "backspace", sequence: "\x7f" }), press("a")]);
-    expect(state.input).toBe("ca");
+    state = feed(state, [key({ name: "backspace", sequence: "\x7f" }), press("o")]);
+    expect(state.input).toBe("do");
     expect(computeCells(state)[1]!.status).toBe("correct");
   });
 });

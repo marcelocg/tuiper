@@ -278,6 +278,7 @@ export function applyCommand(
     case "nextExcerpt":
     case "cycleCategory":
     case "toggleTheme":
+    case "toggleLocale":
     case "openProfile":
     case "quit":
     case "none":

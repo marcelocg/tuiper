@@ -45,10 +45,11 @@ export function mapKeyToCommand(key: KeyEvent, state: SessionState): Command {
   }
 
   // Ready / Finished: `c` cycles the category filter (then reloads an excerpt);
-  // `t` toggles the theme; `p` opens the profile screen (a shell overlay over
-  // the current session).
+  // `t` toggles the theme; `l` toggles the UI locale (re-filters the corpus);
+  // `p` opens the profile screen (a shell overlay over the current session).
   if (isCategoryHotkey(key)) return { kind: "cycleCategory" };
   if (isThemeHotkey(key)) return { kind: "toggleTheme" };
+  if (isLocaleHotkey(key)) return { kind: "toggleLocale" };
   if (isProfileHotkey(key)) return { kind: "openProfile" };
 
   // Ready: hotkeys are live. 1/2/3 pick the duration; any other printable is
@@ -93,6 +94,11 @@ function isCategoryHotkey(key: KeyEvent): boolean {
 /** `t` (no modifiers) toggles the theme. Mid-run it's typed, not a hotkey. */
 function isThemeHotkey(key: KeyEvent): boolean {
   return key.sequence === "t" && !key.ctrl && !key.meta && !key.option;
+}
+
+/** `l` (no modifiers) toggles the UI locale. Mid-run it's typed, not a hotkey. */
+function isLocaleHotkey(key: KeyEvent): boolean {
+  return key.sequence === "l" && !key.ctrl && !key.meta && !key.option;
 }
 
 /** `p` (no modifiers) opens the profile screen. Mid-run it's typed, not a hotkey. */

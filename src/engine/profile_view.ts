@@ -5,33 +5,36 @@
 
 import { brailleChart } from "./braille_chart";
 import type { Profile, TrendStat } from "./profile";
+import { stringsFor, type ProfileStrings } from "./strings";
 
-/** Shown when there is no history yet to chart. */
-export const EMPTY_HISTORY_MESSAGE = "No sessions yet — finish a run to see your trends.";
+/** Shown when there is no history yet to chart (English default). */
+export const EMPTY_HISTORY_MESSAGE = stringsFor("en").profile.empty;
 
 const LABEL_WIDTH = 10;
 
 /**
  * The profile screen as text lines: header + WPM block + accuracy block. Charts
  * are drawn `chartWidth` cells wide and `chartHeight` rows tall. With no history
- * only the title and a guidance line are returned (no empty charts).
+ * only the title and a guidance line are returned (no empty charts). Labels come
+ * from the injected locale table (defaults to English).
  */
 export function formatProfile(
   profile: Profile,
   chartWidth: number,
   chartHeight: number,
+  strings: ProfileStrings = stringsFor("en").profile,
 ): string[] {
   if (profile.sessionCount === 0) {
-    return ["Profile", "", EMPTY_HISTORY_MESSAGE];
+    return [strings.title, "", strings.empty];
   }
 
   return [
-    "Profile",
-    `${"Sessions".padEnd(LABEL_WIDTH)}${profile.sessionCount}`,
+    strings.title,
+    `${strings.sessions.padEnd(LABEL_WIDTH)}${profile.sessionCount}`,
     "",
-    ...metricBlock("WPM", profile.wpm, profile.wpmSeries, "", chartWidth, chartHeight),
+    ...metricBlock(strings.wpm, profile.wpm, profile.wpmSeries, "", chartWidth, chartHeight, strings),
     "",
-    ...metricBlock("Accuracy", profile.accuracy, profile.accuracySeries, "%", chartWidth, chartHeight),
+    ...metricBlock(strings.accuracy, profile.accuracy, profile.accuracySeries, "%", chartWidth, chartHeight, strings),
   ];
 }
 
@@ -43,9 +46,11 @@ function metricBlock(
   suffix: string,
   chartWidth: number,
   chartHeight: number,
+  strings: ProfileStrings,
 ): string[] {
   const headline =
     `${label.padEnd(LABEL_WIDTH)}` +
-    `best ${stat.best}${suffix} · avg ${stat.average}${suffix} · recent ${stat.recent}${suffix}`;
+    `${strings.best} ${stat.best}${suffix} · ${strings.avg} ${stat.average}${suffix} · ` +
+    `${strings.recent} ${stat.recent}${suffix}`;
   return [headline, ...brailleChart(series, chartWidth, chartHeight)];
 }

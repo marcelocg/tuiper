@@ -18,6 +18,10 @@ export type Command =
   // Toggle the color theme (Slate ↔ Rush). Shell-owned: the shell swaps the
   // active palette and persists it. A Ready/Finished hotkey — mid-run `t` types.
   | { readonly kind: "toggleTheme" }
+  // Toggle the UI locale (EN ↔ pt-BR). Shell-owned: the shell swaps the string
+  // table, re-filters the corpus to the locale, and persists it. A
+  // Ready/Finished hotkey — mid-run `l` types.
+  | { readonly kind: "toggleLocale" }
   // Open the profile screen (history trends). Shell-owned overlay; the engine
   // session is untouched. Only live in ready/finished — mid-run `p` types.
   | { readonly kind: "openProfile" }

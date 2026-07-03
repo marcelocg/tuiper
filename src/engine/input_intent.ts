@@ -44,8 +44,10 @@ export function mapKeyToCommand(key: KeyEvent, state: SessionState): Command {
     return NONE;
   }
 
-  // Ready / Finished: `c` cycles the category filter (then reloads an excerpt).
+  // Ready / Finished: `c` cycles the category filter (then reloads an excerpt);
+  // `p` opens the profile screen (a shell overlay over the current session).
   if (isCategoryHotkey(key)) return { kind: "cycleCategory" };
+  if (isProfileHotkey(key)) return { kind: "openProfile" };
 
   // Ready: hotkeys are live. 1/2/3 pick the duration; any other printable is
   // the first keystroke, which starts (and types into) the run. Duration is
@@ -84,6 +86,11 @@ function isTab(key: KeyEvent): boolean {
 /** `c` (no modifiers) cycles the excerpt category. Ctrl-C is caught earlier. */
 function isCategoryHotkey(key: KeyEvent): boolean {
   return key.sequence === "c" && !key.ctrl && !key.meta && !key.option;
+}
+
+/** `p` (no modifiers) opens the profile screen. Mid-run it's typed, not a hotkey. */
+function isProfileHotkey(key: KeyEvent): boolean {
+  return key.sequence === "p" && !key.ctrl && !key.meta && !key.option;
 }
 
 function isBackspace(key: KeyEvent): boolean {

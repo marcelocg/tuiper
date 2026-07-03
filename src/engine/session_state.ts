@@ -277,6 +277,7 @@ export function applyCommand(
     // so it is the shell's job — a no-op at the engine level.
     case "nextExcerpt":
     case "cycleCategory":
+    case "openProfile":
     case "quit":
     case "none":
       return state;

@@ -30,6 +30,8 @@ import { LABEL_WIDTH, TRACK_FILL, raceLanes } from "../engine/race_view";
 import { calculateMetrics } from "../engine/metrics";
 import { buildResult } from "../engine/session_result";
 import { formatResultPanel } from "../engine/results_view";
+import { buildProfile } from "../engine/profile";
+import { formatProfile } from "../engine/profile_view";
 import { preferredSpeedBand, randomExcerptIndex } from "../engine/speed_band";
 import { excerptsForLocale, type Excerpt } from "../corpus/corpus";
 import { SessionStore } from "../storage/session_store";
@@ -73,6 +75,9 @@ export async function runApp(): Promise<CliRenderer> {
   let category = "random";
   let currentIndex: number | null = null; // null → nothing to exclude yet
   let saved = false;
+  // Profile is a shell-owned overlay (history trends) over the session — it
+  // pauses nothing; the session is untouched. Any key but Ctrl-C closes it.
+  let overlay: "profile" | null = null;
   // The speed band only changes when a finished run is saved, so read it from
   // history once here and refresh it after each save — not on every excerpt
   // load, which would re-read (and re-compact) sessions.json on the render path.
@@ -156,6 +161,13 @@ export async function runApp(): Promise<CliRenderer> {
   }
 
   function draw(now: number): void {
+    if (overlay === "profile") {
+      header.content = buildHeader(state, now);
+      surface.content = buildProfilePanel(store, renderer.width, surfaceHeight());
+      raceStrip.content = "";
+      footer.content = buildFooter(state, category, overlay);
+      return;
+    }
     header.content = buildHeader(state, now);
     surface.content =
       sessionStatus(state) === "finished"
@@ -165,14 +177,35 @@ export async function runApp(): Promise<CliRenderer> {
     raceStrip.top = SURFACE_TOP + surfaceHeight() + 1;
     raceStrip.content =
       sessionStatus(state) === "active" ? buildRaceStrip(state, now, renderer.width) : "";
-    footer.content = buildFooter(state, category);
+    footer.content = buildFooter(state, category, overlay);
   }
 
   renderer.keyInput.on("keypress", (e: OpenTuiKeyEvent) => {
     const now = performance.now(); // stamp on receipt (input is per-keystroke)
+    // While the profile overlay is up, keys don't reach the session: Ctrl-C
+    // quits, any other key dismisses the overlay back to the run.
+    if (overlay) {
+      if (mapKeyToCommand(e, state).kind === "quit") {
+        cleanup(renderer);
+        return;
+      }
+      // Ignore kitty release/repeat events — only a fresh press dismisses, so
+      // holding the key that opened the overlay can't immediately close it.
+      if (e.eventType === "release" || e.eventType === "repeat") return;
+      overlay = null;
+      draw(now);
+      renderer.requestRender();
+      return;
+    }
     const cmd = mapKeyToCommand(e, state);
     if (cmd.kind === "quit") {
       cleanup(renderer);
+      return;
+    }
+    if (cmd.kind === "openProfile") {
+      overlay = "profile";
+      draw(now);
+      renderer.requestRender();
       return;
     }
     // Excerpt selection replaces the whole session (impure: corpus + rng), so
@@ -349,15 +382,45 @@ function buildResultsPanel(
   return new StyledText(chunks);
 }
 
+/**
+ * The profile overlay: history trends read from local storage. Braille WPM and
+ * accuracy charts plus best/avg/recent headline stats, laid out to the surface
+ * width/height. Read once per open/resize (never per-tick), so `store.all()`'s
+ * compaction cost stays off the render loop.
+ */
+function buildProfilePanel(store: SessionStore, width: number, height: number): StyledText {
+  const chartWidth = Math.max(1, width);
+  // Split the surface height between the two metric charts, reserving rows for
+  // the title, the two stat headlines, and spacers (~5 chrome rows).
+  const chartHeight = Math.max(1, Math.floor((height - 5) / 2));
+  const lines = formatProfile(buildProfile(store.all()), chartWidth, chartHeight);
+  // Never overflow the surface into the footer — window to the visible height
+  // (from the top), matching how the typing/results panels clamp their content.
+  const win = visibleWindow(lines.length, 0, height);
+  const visible = lines.slice(win.start, win.end);
+
+  const chunks: Chunk[] = [];
+  visible.forEach((line, i) => {
+    // Braille chart rows carry the trend color; text rows are chrome.
+    const color = /[⠀-⣿]/.test(line) ? slate.correct : slate.chrome;
+    chunks.push(chunk(line, color));
+    if (i < visible.length - 1) chunks.push(chunk("\n"));
+  });
+  return new StyledText(chunks);
+}
+
 /** Persistent hint bar: duration + category + controls. */
-function buildFooter(state: SessionState, category: string): StyledText {
+function buildFooter(state: SessionState, category: string, overlay: "profile" | null): StyledText {
+  if (overlay === "profile") {
+    return new StyledText([chunk("Profile · any key to close · Ctrl-C quit", slate.chrome)]);
+  }
   // The duration hint only applies before a run starts (ready); mid-run it is
   // locked and post-run it is a settled fact.
   const gate = sessionStatus(state) === "ready" ? " · 1/2/3 duration" : "";
   return new StyledText([
     chunk(
       `Duration ${state.durationSeconds}s · Category ${category}${gate} · ` +
-        `Tab next · c category · Bksp char · Ctrl-Bksp word · Ctrl-U line · Ctrl-C quit`,
+        `Tab next · c category · p profile · Bksp char · Ctrl-Bksp word · Ctrl-U line · Ctrl-C quit`,
       slate.chrome,
     ),
   ]);

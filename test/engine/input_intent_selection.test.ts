@@ -13,6 +13,7 @@ const finished = finish(typeChar(createSession("hello world"), "h", 1000), 40000
 
 const tab = key({ name: "tab", sequence: "\t" });
 const cKey = key({ name: "c", sequence: "c" });
+const pKey = key({ name: "p", sequence: "p" });
 
 describe("Tab → nextExcerpt", () => {
   test("is a command in every state (Ready / Active / Finished)", () => {
@@ -36,5 +37,16 @@ describe("c → cycleCategory", () => {
     expect(mapKeyToCommand(key({ name: "c", sequence: "c", ctrl: true }), ready)).toEqual({
       kind: "quit",
     });
+  });
+});
+
+describe("p → openProfile", () => {
+  test("opens the profile when Ready or Finished", () => {
+    expect(mapKeyToCommand(pKey, ready)).toEqual({ kind: "openProfile" });
+    expect(mapKeyToCommand(pKey, finished)).toEqual({ kind: "openProfile" });
+  });
+
+  test("is typed input mid-run (never opens the overlay)", () => {
+    expect(mapKeyToCommand(pKey, active)).toEqual({ kind: "type", char: "p" });
   });
 });

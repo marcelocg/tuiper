@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { calculateMetrics, summarizeWords } from "../../src/engine/metrics";
+import {
+  calculateMetrics,
+  displayPair,
+  summarizeDigraphs,
+  summarizeWords,
+} from "../../src/engine/metrics";
 
 // Golden values ported verbatim from frank_type's
 // test/javascript/typing_metrics.test.mjs, plus hand-derived cases pinning
@@ -120,5 +125,106 @@ describe("summarizeWords", () => {
     expect(words[0]!.elapsedMs).toBe(90);
     expect(words[1]!.elapsedMs).toBeNull(); // "bye" untyped
     expect(words[1]!.correct).toBe(false);
+  });
+});
+
+describe("summarizeDigraphs", () => {
+  // Helper mirrored from frank_type's typing_metrics.test.mjs.
+  function timingsFromLatencies(latencies: number[]) {
+    let elapsedMs = 0;
+    const characters = "abcdefghijklmnopqrstuvwxyz";
+    const timings = [{ index: 0, expected: characters[0]!, correct: true, elapsedMs }];
+    latencies.forEach((latencyMs, index) => {
+      elapsedMs += latencyMs;
+      timings.push({
+        index: index + 1,
+        expected: characters[(index + 1) % characters.length]!,
+        correct: true,
+        elapsedMs,
+      });
+    });
+    return timings;
+  }
+
+  test("displayPair replaces spaces with the visible glyph", () => {
+    expect(displayPair("e ")).toBe("e␠");
+    expect(displayPair("th")).toBe("th");
+  });
+
+  // frank_type: "summarizeDigraphs ranks correct adjacent character pairs"
+  test("ranks correct adjacent character pairs (frank_type golden)", () => {
+    const summary = summarizeDigraphs({
+      characterTimings: [
+        { index: 0, expected: "t", correct: true, elapsedMs: 0 },
+        { index: 1, expected: "h", correct: true, elapsedMs: 180 },
+        { index: 2, expected: "e", correct: true, elapsedMs: 240 },
+        { index: 3, expected: " ", correct: true, elapsedMs: 520 },
+        { index: 4, expected: "m", correct: true, elapsedMs: 610 },
+      ],
+      keyEvents: [],
+    });
+
+    expect(summary.samples.length).toBe(4);
+    expect(summary.rankedPairs[0]!.displayPair).toBe("e␠");
+    expect(summary.rankedPairs[0]!.medianLatencyMs).toBe(280);
+    expect(summary.samples.some((sample) => sample.heat > 0)).toBe(true);
+  });
+
+  // frank_type: "summarizeDigraphs filters mistakes corrections and long pauses"
+  test("filters mistakes, corrections and long pauses (frank_type golden)", () => {
+    const summary = summarizeDigraphs({
+      characterTimings: [
+        { index: 0, expected: "a", correct: true, elapsedMs: 0 },
+        { index: 1, expected: "b", correct: false, elapsedMs: 100 },
+        { index: 2, expected: "c", correct: true, elapsedMs: 260 },
+        { index: 3, expected: "d", correct: true, elapsedMs: 1900 },
+        { index: 4, expected: "e", correct: true, elapsedMs: 2020 },
+        { index: 5, expected: "f", correct: true, elapsedMs: 2300 },
+      ],
+      keyEvents: [{ action: "backspace", elapsedMs: 2100 }],
+    });
+
+    // b wrong (a→b, b→c dropped), c→d = 1640ms > 1200 (dropped), d→e kept,
+    // e→f spans the backspace at 2100 (dropped).
+    expect(summary.samples.map((sample) => sample.pair)).toEqual(["de"]);
+  });
+
+  // frank_type: "summarizeDigraphs only heats the most actionable slow pairs"
+  test("only heats the most actionable slow pairs (frank_type golden)", () => {
+    const latencies = [40, 45, 50, 55, 60, 65, 70, 75, 160, 180, 200, 220, 240, 260, 280];
+    const summary = summarizeDigraphs({
+      characterTimings: timingsFromLatencies(latencies),
+      keyEvents: [],
+    });
+    const heated = summary.samples.filter((sample) => sample.heat > 0);
+
+    expect(heated.length).toBe(3);
+    expect(heated.map((sample) => sample.latencyMs)).toEqual([240, 260, 280]);
+    // a pair slower than baseline can still be left cold (not among the actionable)
+    expect(
+      summary.samples.some(
+        (sample) => sample.latencyMs > summary.medianLatencyMs && sample.heat === 0,
+      ),
+    ).toBe(true);
+  });
+
+  // frank_type: "summarizeDigraphs caps heat to a small fraction of long sessions"
+  test("caps heat to a small fraction of long sessions (frank_type golden)", () => {
+    const latencies = Array.from({ length: 80 }, (_value, index) => 50 + index * 6);
+    const summary = summarizeDigraphs({
+      characterTimings: timingsFromLatencies(latencies),
+      keyEvents: [],
+    });
+    const heated = summary.samples.filter((sample) => sample.heat > 0);
+
+    expect(heated.length).toBeLessThanOrEqual(6);
+    expect(heated.length).toBeLessThan(summary.samples.length / 2);
+  });
+
+  test("empty input → empty summary, zero baseline", () => {
+    const summary = summarizeDigraphs({ characterTimings: [], keyEvents: [] });
+    expect(summary.samples).toEqual([]);
+    expect(summary.rankedPairs).toEqual([]);
+    expect(summary.medianLatencyMs).toBe(0);
   });
 });

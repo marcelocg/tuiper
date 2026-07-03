@@ -23,6 +23,7 @@ import {
   visualLineStartIndex,
   wordWrap,
 } from "../engine/typing_view";
+import { computeHeatCells, formatSlowPairs } from "../engine/heatmap_view";
 import { buildResult } from "../engine/session_result";
 import { formatResultPanel } from "../engine/results_view";
 import { preferredSpeedBand, randomExcerptIndex } from "../engine/speed_band";
@@ -30,7 +31,7 @@ import { excerptsForLocale, type Excerpt } from "../corpus/corpus";
 import { SessionStore } from "../storage/session_store";
 import { FileStorage } from "../storage/file_storage";
 import { buildStoredSession } from "../storage/session_record";
-import { cellToChunk, chunk, slate, type Chunk } from "./theme";
+import { cellToChunk, chunk, heatCellToChunk, slate, type Chunk } from "./theme";
 
 // Thin OpenTUI shell above the engine seam: it translates real key events into
 // engine commands, applies them, and renders engine view data to the terminal.
@@ -40,6 +41,9 @@ import { cellToChunk, chunk, slate, type Chunk } from "./theme";
 
 const SURFACE_TOP = 2;
 const FOOTER_RESERVE = 2; // blank line + footer
+
+/** 24-bit color support; otherwise the heat map snaps to the 256-color cube. */
+const TRUECOLOR = /^(truecolor|24bit)$/i.test(process.env.COLORTERM ?? "");
 
 /** Category filter cycle for the `c` hotkey (PRD keymap). */
 const CATEGORIES = ["random", "scifi", "fantasy", "biography"] as const;
@@ -140,7 +144,7 @@ export async function runApp(): Promise<CliRenderer> {
     header.content = buildHeader(state, now);
     surface.content =
       sessionStatus(state) === "finished"
-        ? buildResultsPanel(state, now)
+        ? buildResultsPanel(state, now, renderer.width, surfaceHeight())
         : buildSurface(state, renderer.width, surfaceHeight());
     footer.content = buildFooter(state, category);
   }
@@ -241,13 +245,48 @@ function buildSurface(state: SessionState, width: number, height: number): Style
   return new StyledText(chunks);
 }
 
-/** Post-run results panel: the five headline metrics, one per line. */
-function buildResultsPanel(state: SessionState, now: number): StyledText {
-  const lines = formatResultPanel(buildResult(state, now));
+/**
+ * Post-run panel: the five headline metrics, the ranked slow-pairs list, then
+ * the excerpt replayed as a digraph heat map (per-cell backgrounds). The heat
+ * map appears only here — never during a run (PRD story 23).
+ */
+function buildResultsPanel(
+  state: SessionState,
+  now: number,
+  width: number,
+  height: number,
+): StyledText {
+  const result = buildResult(state, now);
+  // Accumulate rows (each a chunk list), then join with newlines once — the row
+  // count is the single source of truth for the remaining heat-map budget, so
+  // no hand-kept line math can drift out of sync with what is emitted.
+  const rows: Chunk[][] = [];
+
+  for (const line of formatResultPanel(result)) rows.push([chunk(line, slate.correct)]);
+
+  const slowPairs = formatSlowPairs(result.digraphs.rankedPairs);
+  if (slowPairs.length > 0) {
+    rows.push([], [chunk("Slowest pairs", slate.chrome)]);
+    for (const line of slowPairs) rows.push([chunk(line, slate.wrong)]);
+  }
+
+  // Heat-map replay of the excerpt, wrapped to width and windowed to whatever
+  // height remains under the metrics + slow-pairs block (cursor is always 0 —
+  // this is a static replay, so the top of the excerpt stays anchored).
+  const heatLines = wordWrap(computeHeatCells(state.target, result.digraphs.samples), width);
+  const remaining = height - rows.length - 1; // -1 for the blank spacer row
+  if (remaining >= 1 && heatLines.length > 0) {
+    rows.push([]); // blank spacer above the heat map
+    const win = visibleWindow(heatLines.length, 0, remaining);
+    for (let r = win.start; r < win.end; r++) {
+      rows.push(heatLines[r]!.map((cell) => heatCellToChunk(cell, TRUECOLOR)));
+    }
+  }
+
   const chunks: Chunk[] = [];
-  lines.forEach((line, i) => {
-    chunks.push(chunk(line, slate.correct));
-    if (i < lines.length - 1) chunks.push(chunk("\n"));
+  rows.forEach((row, i) => {
+    chunks.push(...row);
+    if (i < rows.length - 1) chunks.push(chunk("\n"));
   });
   return new StyledText(chunks);
 }

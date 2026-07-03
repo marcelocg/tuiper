@@ -18,6 +18,27 @@ export function normalizeText(text: string, locale: Locale = "en"): string {
   return locale === "pt-BR" ? normalizePortuguese(text) : normalizeEnglish(text);
 }
 
+// Non-decomposing Latin letters I18n.transliterate maps to ASCII but NFKD
+// leaves intact (they carry no combining marks). Without this map they would be
+// spaced out by the [a-z0-9] filter instead of folded. Values are lowercase —
+// applied after toLowerCase.
+const NON_DECOMPOSING: Record<string, string> = {
+  ß: "ss",
+  æ: "ae",
+  œ: "oe",
+  ø: "o",
+  ð: "d",
+  þ: "th",
+  đ: "d",
+  ł: "l",
+  ĳ: "ij",
+};
+
+// Ruby's `\s` is ASCII-only ([ \t\r\n\f\v]); JS `\s` also matches Unicode
+// separators (U+2028/2029/00A0…). Match Ruby exactly so exotic separators are
+// stripped to a space rather than retained.
+const ASCII_WS = " \\t\\n\\r\\f\\v";
+
 function normalizeEnglish(text: string): string {
   return (
     text
@@ -26,8 +47,10 @@ function normalizeEnglish(text: string): string {
       .normalize("NFKD")
       .replace(/\p{M}/gu, "")
       .toLowerCase()
-      // Anything left that isn't a-z, 0-9, or whitespace becomes a space…
-      .replace(/[^a-z0-9\s]/g, " ")
+      // Fold the non-decomposing Latin letters NFKD can't (ß→ss, æ→ae, …).
+      .replace(/[ßæœøðþđłĳ]/g, (c) => NON_DECOMPOSING[c] ?? c)
+      // Anything left that isn't a-z, 0-9, or ASCII whitespace becomes a space…
+      .replace(new RegExp(`[^a-z0-9${ASCII_WS}]`, "g"), " ")
       // …then collapse the resulting space runs (Ruby squeeze(" ")).
       .replace(/ +/g, " ")
       .trim()

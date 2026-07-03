@@ -283,5 +283,15 @@ export function applyCommand(
     case "quit":
     case "none":
       return state;
+    default:
+      // Exhaustiveness guard: a new Command kind that reaches here fails to
+      // assign to `never`, so tsc points at the exact unhandled variant instead
+      // of the cryptic "function lacks ending return statement".
+      return assertNever(cmd);
   }
+}
+
+/** Compile-time proof a switch is exhaustive; never runs (throws if it does). */
+function assertNever(value: never): never {
+  throw new Error(`Unhandled command: ${JSON.stringify(value)}`);
 }

@@ -13,6 +13,7 @@ const finished = finish(typeChar(createSession("hello world"), "h", 1000), 40000
 
 const tab = key({ name: "tab", sequence: "\t" });
 const cKey = key({ name: "c", sequence: "c" });
+const tKey = key({ name: "t", sequence: "t" });
 const pKey = key({ name: "p", sequence: "p" });
 
 describe("Tab → nextExcerpt", () => {
@@ -37,6 +38,17 @@ describe("c → cycleCategory", () => {
     expect(mapKeyToCommand(key({ name: "c", sequence: "c", ctrl: true }), ready)).toEqual({
       kind: "quit",
     });
+  });
+});
+
+describe("t → toggleTheme", () => {
+  test("toggles the theme when Ready or Finished", () => {
+    expect(mapKeyToCommand(tKey, ready)).toEqual({ kind: "toggleTheme" });
+    expect(mapKeyToCommand(tKey, finished)).toEqual({ kind: "toggleTheme" });
+  });
+
+  test("is typed input mid-run (never a command)", () => {
+    expect(mapKeyToCommand(tKey, active)).toEqual({ kind: "type", char: "t" });
   });
 });
 

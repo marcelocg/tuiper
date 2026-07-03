@@ -1,18 +1,57 @@
 import { RGBA } from "@opentui/core";
 import type { CharCell } from "../engine/typing_view";
+import type { ThemeName } from "../engine/theme";
 
-// Minimal Slate palette for the walking skeleton. The full two-theme system
-// (Slate / Rush, runtime-switchable, persisted) is a later slice.
-export const slate = {
+// The two color themes (Slate / Rush), each mapping frank_type's CSS-variable
+// roles to terminal colors. A Palette is the shell-side realization of a
+// ThemeName: the engine decides which theme is active, this module supplies its
+// colors. The heat-map gradient is theme-independent (a warm ramp), but the
+// legible foreground drawn over a hot cell (`heatFg`) comes from the palette.
+
+export interface Palette {
+  readonly name: ThemeName;
+  /** Not-yet-typed text (also the fg over a cold heat-map cell). */
+  readonly pending: RGBA;
+  readonly correct: RGBA;
+  readonly wrong: RGBA;
+  readonly cursorBg: RGBA;
+  readonly cursorFg: RGBA;
+  /** Muted UI text: header/footer, labels, race track. */
+  readonly chrome: RGBA;
+  /** Legible foreground for a character sitting on a hot heat-map background. */
+  readonly heatFg: RGBA;
+}
+
+/** Slate — the cool blue-grey theme (frank_type's default). */
+export const slate: Palette = {
+  name: "slate",
   pending: RGBA.fromInts(92, 99, 112, 255),
   correct: RGBA.fromInts(126, 200, 130, 255),
   wrong: RGBA.fromInts(232, 96, 96, 255),
   cursorBg: RGBA.fromInts(200, 206, 216, 255),
   cursorFg: RGBA.fromInts(22, 24, 30, 255),
   chrome: RGBA.fromInts(140, 148, 162, 255),
-  /** Legible foreground for a character sitting on a hot heat-map background. */
   heatFg: RGBA.fromInts(244, 244, 248, 255),
 };
+
+/** Rush — the warm high-energy theme (amber/orange accents). */
+export const rush: Palette = {
+  name: "rush",
+  pending: RGBA.fromInts(120, 108, 96, 255),
+  correct: RGBA.fromInts(164, 206, 88, 255),
+  wrong: RGBA.fromInts(240, 88, 56, 255),
+  cursorBg: RGBA.fromInts(236, 222, 204, 255),
+  cursorFg: RGBA.fromInts(30, 22, 16, 255),
+  chrome: RGBA.fromInts(198, 158, 116, 255),
+  heatFg: RGBA.fromInts(250, 246, 238, 255),
+};
+
+const PALETTES: Record<ThemeName, Palette> = { slate, rush };
+
+/** The palette for a theme name. */
+export function paletteFor(name: ThemeName): Palette {
+  return PALETTES[name];
+}
 
 export interface Chunk {
   readonly __isChunk: true;
@@ -26,17 +65,17 @@ export function chunk(text: string, fg?: RGBA, bg?: RGBA): Chunk {
   return { __isChunk: true, text, fg, bg };
 }
 
-/** Map a laid-out CharCell to a colored terminal chunk. */
-export function cellToChunk(cell: CharCell): Chunk {
+/** Map a laid-out CharCell to a colored terminal chunk in the given palette. */
+export function cellToChunk(cell: CharCell, palette: Palette): Chunk {
   if (cell.cursor) {
-    return chunk(cell.char, slate.cursorFg, slate.cursorBg);
+    return chunk(cell.char, palette.cursorFg, palette.cursorBg);
   }
   const fg =
     cell.status === "correct"
-      ? slate.correct
+      ? palette.correct
       : cell.status === "wrong"
-        ? slate.wrong
-        : slate.pending;
+        ? palette.wrong
+        : palette.pending;
   return chunk(cell.char, fg);
 }
 
@@ -95,7 +134,7 @@ export function heatToBg(heat: number, truecolor = true): RGBA | undefined {
 }
 
 /** Map a heat-map replay cell to a chunk with a heat-interpolated background. */
-export function heatCellToChunk(cell: CharCell, truecolor = true): Chunk {
+export function heatCellToChunk(cell: CharCell, palette: Palette, truecolor = true): Chunk {
   const bg = heatToBg(cell.heat ?? 0, truecolor);
-  return chunk(cell.char, bg ? slate.heatFg : slate.pending, bg);
+  return chunk(cell.char, bg ? palette.heatFg : palette.pending, bg);
 }

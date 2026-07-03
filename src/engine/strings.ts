@@ -50,12 +50,42 @@ export interface FooterStrings {
   readonly hints: string;
 }
 
+/** Help overlay: title, close hint, and one description per keybinding. The key
+ * literals (Tab, ?, 1/2/3, …) are universal and live in the view; only the
+ * descriptions are localized here. */
+export interface HelpStrings {
+  readonly title: string;
+  readonly closeHint: string;
+  readonly nextExcerpt: string;
+  readonly help: string;
+  readonly duration: string;
+  readonly category: string;
+  readonly theme: string;
+  readonly locale: string;
+  readonly profile: string;
+  readonly sources: string;
+  readonly quit: string;
+  readonly deleteChar: string;
+  readonly deleteWord: string;
+  readonly deleteToLineStart: string;
+  readonly closeOverlay: string;
+}
+
+/** Sources screen: title, per-entry framing, empty message, close hint. */
+export interface SourcesStrings {
+  readonly title: string;
+  readonly empty: string;
+  readonly closeHint: string;
+}
+
 /** Everything the shell and views render, for one locale. */
 export interface UIStrings {
   readonly header: HeaderStrings;
   readonly footer: FooterStrings;
   readonly results: ResultsStrings;
   readonly profile: ProfileStrings;
+  readonly help: HelpStrings;
+  readonly sources: SourcesStrings;
   /** Race-lane labels, keyed by racer id (localized in the strip). */
   readonly race: Record<RacerId, string>;
   /** Category-filter display names, keyed by the internal category id. */
@@ -76,8 +106,8 @@ const EN: UIStrings = {
     locale: "Locale",
     durationHint: "1/2/3 duration",
     hints:
-      "Tab next · c category · t theme · l locale · p profile · " +
-      "Bksp char · Ctrl-Bksp word · Ctrl-U line · Ctrl-C quit",
+      "Tab next · ? help · c category · t theme · l locale · p profile · " +
+      "s sources · Bksp char · Ctrl-Bksp word · Ctrl-U line · q/Ctrl-C quit",
   },
   results: {
     wpm: "WPM",
@@ -97,6 +127,28 @@ const EN: UIStrings = {
     avg: "avg",
     recent: "recent",
     closeHint: "Profile · any key to close · Ctrl-C quit",
+  },
+  help: {
+    title: "Keybindings",
+    closeHint: "Help · ↑/↓ scroll · Esc or q to close · Ctrl-C quit",
+    nextExcerpt: "next excerpt",
+    help: "this help",
+    duration: "duration 15 / 30 / 60s",
+    category: "cycle category",
+    theme: "toggle theme",
+    locale: "toggle locale",
+    profile: "profile & trends",
+    sources: "excerpt sources",
+    quit: "quit",
+    deleteChar: "delete character",
+    deleteWord: "delete word",
+    deleteToLineStart: "delete to line start",
+    closeOverlay: "close overlay",
+  },
+  sources: {
+    title: "Sources",
+    empty: "No excerpts loaded.",
+    closeHint: "Sources · ↑/↓ scroll · Esc or q to close · Ctrl-C quit",
   },
   race: { slow: "Slow", you: "You", fast: "Fast" },
   categories: {
@@ -121,8 +173,8 @@ const PT_BR: UIStrings = {
     locale: "Idioma",
     durationHint: "1/2/3 duração",
     hints:
-      "Tab próximo · c categoria · t tema · l idioma · p perfil · " +
-      "Bksp caractere · Ctrl-Bksp palavra · Ctrl-U linha · Ctrl-C sair",
+      "Tab próximo · ? ajuda · c categoria · t tema · l idioma · p perfil · " +
+      "s fontes · Bksp caractere · Ctrl-Bksp palavra · Ctrl-U linha · q/Ctrl-C sair",
   },
   results: {
     wpm: "PPM",
@@ -142,6 +194,28 @@ const PT_BR: UIStrings = {
     avg: "média",
     recent: "recente",
     closeHint: "Perfil · qualquer tecla para fechar · Ctrl-C sair",
+  },
+  help: {
+    title: "Atalhos",
+    closeHint: "Ajuda · ↑/↓ rolar · Esc ou q para fechar · Ctrl-C sair",
+    nextExcerpt: "próximo trecho",
+    help: "esta ajuda",
+    duration: "duração 15 / 30 / 60s",
+    category: "trocar categoria",
+    theme: "trocar tema",
+    locale: "trocar idioma",
+    profile: "perfil e tendências",
+    sources: "fontes dos trechos",
+    quit: "sair",
+    deleteChar: "apagar caractere",
+    deleteWord: "apagar palavra",
+    deleteToLineStart: "apagar até o início da linha",
+    closeOverlay: "fechar sobreposição",
+  },
+  sources: {
+    title: "Fontes",
+    empty: "Nenhum trecho carregado.",
+    closeHint: "Fontes · ↑/↓ rolar · Esc ou q para fechar · Ctrl-C sair",
   },
   race: { slow: "Lento", you: "Você", fast: "Rápido" },
   categories: {

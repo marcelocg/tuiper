@@ -280,6 +280,8 @@ export function applyCommand(
     case "toggleTheme":
     case "toggleLocale":
     case "openProfile":
+    case "openHelp":
+    case "openSources":
     case "quit":
     case "none":
       return state;

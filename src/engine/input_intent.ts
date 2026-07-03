@@ -44,13 +44,17 @@ export function mapKeyToCommand(key: KeyEvent, state: SessionState): Command {
     return NONE;
   }
 
-  // Ready / Finished: `c` cycles the category filter (then reloads an excerpt);
-  // `t` toggles the theme; `l` toggles the UI locale (re-filters the corpus);
-  // `p` opens the profile screen (a shell overlay over the current session).
+  // Ready / Finished: `q` quits (mid-run it's typed, handled above); `c` cycles
+  // the category filter (then reloads an excerpt); `t` toggles the theme; `l`
+  // toggles the UI locale (re-filters the corpus); `p`/`?`/`s` open the profile,
+  // help, and sources overlays respectively (shell overlays over the session).
+  if (isQuitHotkey(key)) return { kind: "quit" };
   if (isCategoryHotkey(key)) return { kind: "cycleCategory" };
   if (isThemeHotkey(key)) return { kind: "toggleTheme" };
   if (isLocaleHotkey(key)) return { kind: "toggleLocale" };
   if (isProfileHotkey(key)) return { kind: "openProfile" };
+  if (isHelpHotkey(key)) return { kind: "openHelp" };
+  if (isSourcesHotkey(key)) return { kind: "openSources" };
 
   // Ready: hotkeys are live. 1/2/3 pick the duration; any other printable is
   // the first keystroke, which starts (and types into) the run. Duration is
@@ -104,6 +108,21 @@ function isLocaleHotkey(key: KeyEvent): boolean {
 /** `p` (no modifiers) opens the profile screen. Mid-run it's typed, not a hotkey. */
 function isProfileHotkey(key: KeyEvent): boolean {
   return key.sequence === "p" && !key.ctrl && !key.meta && !key.option;
+}
+
+/** `?` (no modifiers) opens the help overlay. Mid-run it's typed, not a hotkey. */
+function isHelpHotkey(key: KeyEvent): boolean {
+  return key.sequence === "?" && !key.ctrl && !key.meta && !key.option;
+}
+
+/** `s` (no modifiers) opens the sources screen. Mid-run it's typed, not a hotkey. */
+function isSourcesHotkey(key: KeyEvent): boolean {
+  return key.sequence === "s" && !key.ctrl && !key.meta && !key.option;
+}
+
+/** `q` (no modifiers) quits from ready/finished. Mid-run it's typed input. */
+function isQuitHotkey(key: KeyEvent): boolean {
+  return key.sequence === "q" && !key.ctrl && !key.meta && !key.option;
 }
 
 function isBackspace(key: KeyEvent): boolean {

@@ -74,3 +74,42 @@ describe("p → openProfile", () => {
     expect(mapKeyToCommand(pKey, active)).toEqual({ kind: "type", char: "p" });
   });
 });
+
+describe("? → openHelp", () => {
+  const helpKey = key({ name: "?", sequence: "?" });
+
+  test("opens the help overlay when Ready or Finished", () => {
+    expect(mapKeyToCommand(helpKey, ready)).toEqual({ kind: "openHelp" });
+    expect(mapKeyToCommand(helpKey, finished)).toEqual({ kind: "openHelp" });
+  });
+
+  test("is typed input mid-run (a `?` in the excerpt, never help)", () => {
+    expect(mapKeyToCommand(helpKey, active)).toEqual({ kind: "type", char: "?" });
+  });
+});
+
+describe("s → openSources", () => {
+  const sKey = key({ name: "s", sequence: "s" });
+
+  test("opens the sources screen when Ready or Finished", () => {
+    expect(mapKeyToCommand(sKey, ready)).toEqual({ kind: "openSources" });
+    expect(mapKeyToCommand(sKey, finished)).toEqual({ kind: "openSources" });
+  });
+
+  test("is typed input mid-run (never opens the overlay)", () => {
+    expect(mapKeyToCommand(sKey, active)).toEqual({ kind: "type", char: "s" });
+  });
+});
+
+describe("q → quit", () => {
+  const qKey = key({ name: "q", sequence: "q" });
+
+  test("quits when Ready or Finished", () => {
+    expect(mapKeyToCommand(qKey, ready)).toEqual({ kind: "quit" });
+    expect(mapKeyToCommand(qKey, finished)).toEqual({ kind: "quit" });
+  });
+
+  test("is typed input mid-run (a `q` in the excerpt, never quit)", () => {
+    expect(mapKeyToCommand(qKey, active)).toEqual({ kind: "type", char: "q" });
+  });
+});

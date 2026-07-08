@@ -133,9 +133,12 @@ const HARD_CAP = setTimeout(() => done("timeout", "none"), 60000);
   want("boot-themeName", f, "slate");
   want("boot-ready", f, "ready");
   want("boot-locale-en", f, "Locale en");
-  // The full key-hint tail ("Tab next · ? help · …") overflows 80 cols and is
-  // truncated at the min width — assert the part that fits (the duration gate).
-  want("boot-footer", f, "1/2/3 duration");
+  // The full key-hint tail ("Tab next · ? help · …") overflows 80 cols, so at
+  // the min width the footer collapses to the compact "? help" pointer (#30) —
+  // the config fields stay, the tail becomes the pointer. Assert the pointer
+  // (the stable min-width anchor) plus a config field that always fits.
+  want("boot-footer-help", f, "? help");
+  want("boot-footer-config", f, "Duration 30s");
 
   // 2. ready-state hotkey tour (duration/category/theme/locale are change-deltas → soft)
   f = await press("3").then(() => snap("02-dur60"));

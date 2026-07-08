@@ -48,6 +48,8 @@ export interface FooterStrings {
   readonly locale: string;
   readonly durationHint: string;
   readonly hints: string;
+  /** Compact discoverable pointer shown when the full hint tail can't fit. */
+  readonly helpHint: string;
 }
 
 /** Help overlay: title, close hint, and one description per keybinding. The key
@@ -122,6 +124,7 @@ const EN: UIStrings = {
     hints:
       "Tab next · ? help · c category · t theme · l locale · p profile · " +
       "s sources · Bksp char · Ctrl-Bksp word · Ctrl-U line · q/Ctrl-C quit",
+    helpHint: "? help",
   },
   results: {
     wpm: "WPM",
@@ -201,6 +204,7 @@ const PT_BR: UIStrings = {
     hints:
       "Tab próximo · ? ajuda · c categoria · t tema · l idioma · p perfil · " +
       "s fontes · Bksp caractere · Ctrl-Bksp palavra · Ctrl-U linha · q/Ctrl-C sair",
+    helpHint: "? ajuda",
   },
   results: {
     wpm: "PPM",

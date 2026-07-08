@@ -35,6 +35,7 @@ import { buildProfile } from "../engine/profile";
 import { formatProfile } from "../engine/profile_view";
 import { formatHelp } from "../engine/help_view";
 import { formatSources } from "../engine/sources_view";
+import { formatFooter } from "../engine/footer_view";
 import { preferredSpeedBand, randomExcerptIndex } from "../engine/speed_band";
 import { excerptsForLocale, type Excerpt } from "../corpus/corpus";
 import { SessionStore } from "../storage/session_store";
@@ -249,7 +250,7 @@ export async function runApp(): Promise<CliRenderer> {
     if (overlay) {
       header.content = buildHeader(state, now, palette, strings);
       raceStrip.content = "";
-      footer.content = buildFooter(state, category, overlay, palette, locale, strings);
+      footer.content = buildFooter(state, category, overlay, palette, locale, strings, renderer.width);
       const h = overlayHeight();
       surface.content =
         overlay === "profile"
@@ -276,7 +277,7 @@ export async function runApp(): Promise<CliRenderer> {
       sessionStatus(state) === "active"
         ? buildRaceStrip(state, now, renderer.width, palette, strings)
         : "";
-    footer.content = buildFooter(state, category, overlay, palette, locale, strings);
+    footer.content = buildFooter(state, category, overlay, palette, locale, strings, renderer.width);
   }
 
   renderer.keyInput.on("keypress", (e: OpenTuiKeyEvent) => {
@@ -649,6 +650,7 @@ function buildFooter(
   palette: Palette,
   locale: Locale,
   strings: UIStrings,
+  width: number,
 ): StyledText {
   if (overlay) {
     const closeHint =
@@ -659,20 +661,20 @@ function buildFooter(
           : strings.sources.closeHint;
     return new StyledText([chunk(closeHint, palette.chrome)]);
   }
-  const f = strings.footer;
-  // The duration hint only applies before a run starts (ready); mid-run it is
-  // locked and post-run it is a settled fact.
-  const gate = sessionStatus(state) === "ready" ? ` · ${f.durationHint}` : "";
   // Category shows its localized display name; theme/locale show their stable
-  // identifiers (slate/rush, en/pt-BR) so the active choice is unambiguous.
-  const categoryLabel = strings.categories[category] ?? category;
-  return new StyledText([
-    chunk(
-      `${f.duration} ${state.durationSeconds}s · ${f.category} ${categoryLabel} · ` +
-        `${f.theme} ${palette.name} · ${f.locale} ${locale}${gate} · ${f.hints}`,
-      palette.chrome,
-    ),
-  ]);
+  // identifiers (slate/rush, en/pt-BR) so the active choice is unambiguous. The
+  // pure formatter picks full vs. compact hints for the width (the full tail
+  // overflows the 80-col floor, so it collapses to a `? help` pointer there).
+  const line = formatFooter({
+    strings: strings.footer,
+    categoryLabel: strings.categories[category] ?? category,
+    themeName: palette.name,
+    locale,
+    durationSeconds: state.durationSeconds,
+    ready: sessionStatus(state) === "ready",
+    width,
+  });
+  return new StyledText([chunk(line, palette.chrome)]);
 }
 
 export function cleanup(renderer: CliRenderer): void {

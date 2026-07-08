@@ -1,0 +1,12 @@
+{
+  "name": "tuiper-verify-harness",
+  "private": true,
+  "type": "module",
+  "description": "Headless ConPTY smoke harness for the tuiper TUI (agent verify skill). Isolated from the app's own package.json.",
+  "scripts": {
+    "smoke": "node driver.mjs"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0"
+  }
+}

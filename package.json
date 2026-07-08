@@ -1,6 +1,6 @@
 {
   "name": "tuiper",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Terminal (TUI) typing trainer — a faithful clone of frank_type by Fabio Akita, with byte-identical metrics.",
   "module": "index.ts",
   "type": "module",

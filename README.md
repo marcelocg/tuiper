@@ -17,17 +17,42 @@ no network; history and preferences live in local JSON.
 
 ## Install & run
 
-From source (needs [Bun](https://bun.com) 1.3+):
+Download the self-contained binary for your OS from the
+[latest release](https://github.com/marcelocg/tuiper/releases/latest) — no
+runtime needed on the target machine:
+
+| Platform            | File                        |
+| ------------------- | --------------------------- |
+| Linux (x64)         | `tuiper-linux-x64`          |
+| macOS (Apple, arm64) | `tuiper-darwin-arm64`      |
+| Windows (x64)       | `tuiper-windows-x64.exe`    |
+
+Then make it executable and run it:
+
+```bash
+# Linux / macOS
+chmod +x tuiper-linux-x64   # (or tuiper-darwin-arm64)
+./tuiper-linux-x64
+```
+
+```powershell
+# Windows
+.\tuiper-windows-x64.exe
+```
+
+> macOS may quarantine an unsigned download; clear it with
+> `xattr -d com.apple.quarantine tuiper-darwin-arm64` before the first run.
+
+## From source (development)
+
+Needs [Bun](https://bun.com) 1.3+:
 
 ```bash
 bun install
 bun run index.ts   # or: bun start
 ```
 
-## Build self-contained binaries
-
-`bun build --compile` produces a standalone executable per platform (no runtime
-needed on the target machine):
+Compile the standalone binaries yourself:
 
 ```bash
 bun run build:linux   # dist/tuiper-linux-x64
@@ -47,7 +72,8 @@ bun run typecheck # tsc --noEmit
 ```
 
 CI (GitHub Actions) runs the test suite and typecheck, then compiles the Linux,
-macOS, and Windows binaries on every push and pull request.
+macOS, and Windows binaries on every push and pull request. Pushing a `v*` tag
+additionally publishes a GitHub Release with those three binaries attached.
 
 ## Credits & license
 

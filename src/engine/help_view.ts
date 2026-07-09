@@ -6,6 +6,7 @@
 // descriptions are translated).
 
 import { stringsFor, type HelpStrings } from "./strings";
+import { span, type Row } from "./view_row";
 
 const KEY_WIDTH = 12;
 
@@ -31,10 +32,12 @@ const BINDINGS: ReadonlyArray<readonly [string, (s: HelpStrings) => string]> = [
  * keybinding (`key.padEnd(KEY_WIDTH) + description`). Labels come from the
  * injected locale table (defaults to English).
  */
-export function formatHelp(strings: HelpStrings = stringsFor("en").help): string[] {
+export function formatHelp(strings: HelpStrings = stringsFor("en").help): Row[] {
   return [
-    strings.title,
-    "",
-    ...BINDINGS.map(([literal, describe]) => literal.padEnd(KEY_WIDTH) + describe(strings)),
+    [span("title", strings.title)],
+    [],
+    ...BINDINGS.map(([literal, describe]) => [
+      span("chrome", literal.padEnd(KEY_WIDTH) + describe(strings)),
+    ]),
   ];
 }

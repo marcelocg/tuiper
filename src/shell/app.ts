@@ -4,7 +4,6 @@ import {
   TextRenderable,
   type CliRenderer,
   type KeyEvent as OpenTuiKeyEvent,
-  type RGBA,
 } from "@opentui/core";
 import { mapKeyToCommand } from "../engine/input_intent";
 import {
@@ -27,7 +26,7 @@ import {
   wordWrap,
 } from "../engine/typing_view";
 import { computeHeatCells, formatSlowPairs } from "../engine/heatmap_view";
-import { LABEL_WIDTH, TRACK_FILL, raceLanes } from "../engine/race_view";
+import { LABEL_WIDTH, raceRows } from "../engine/race_view";
 import { calculateMetrics } from "../engine/metrics";
 import { buildResult } from "../engine/session_result";
 import { formatResultPanel } from "../engine/results_view";
@@ -431,16 +430,11 @@ function buildHeader(
   ]);
 }
 
-/** Per-lane glyph color: the user chases the fast marker, ahead of the slow one. */
-function raceGlyphColor(palette: Palette): Record<"slow" | "you" | "fast", RGBA> {
-  return { slow: palette.pending, you: palette.correct, fast: palette.wrong };
-}
-
 /**
  * The live race strip: three labeled lanes (Slow 60 / You / Fast 140) with a
  * glyph advancing on each 100ms tick. The user's live WPM drives their marker,
  * computed from the same metrics the results panel uses so the chase matches the
- * final number.
+ * final number. Lane roles/track building live below the seam in raceRows.
  */
 function buildRaceStrip(
   state: SessionState,
@@ -463,22 +457,13 @@ function buildRaceStrip(
     ...Object.values(strings.race).map((label) => label.length),
   );
   const trackWidth = Math.max(1, width - labelWidth - 1);
-  const lanes = raceLanes(
+  const rows = raceRows(
     { elapsedMs: elapsed, durationSeconds: state.durationSeconds, userWpm },
     trackWidth,
+    strings.race,
+    labelWidth,
   );
-
-  const glyphColor = raceGlyphColor(palette);
-  const chunks: Chunk[] = [];
-  lanes.forEach((lane, i) => {
-    chunks.push(chunk(`${strings.race[lane.id].padEnd(labelWidth)} `, palette.chrome));
-    if (lane.glyphIndex > 0) chunks.push(chunk(TRACK_FILL.repeat(lane.glyphIndex), palette.chrome));
-    chunks.push(chunk(lane.track[lane.glyphIndex]!, glyphColor[lane.id]));
-    const trailing = lane.track.length - lane.glyphIndex - 1;
-    if (trailing > 0) chunks.push(chunk(TRACK_FILL.repeat(trailing), palette.chrome));
-    if (i < lanes.length - 1) chunks.push(chunk("\n"));
-  });
-  return new StyledText(chunks);
+  return paint(rows, palette);
 }
 
 /** The terminal-too-small notice: the pure lines painted in chrome. */

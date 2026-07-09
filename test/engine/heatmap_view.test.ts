@@ -6,6 +6,7 @@ import {
 } from "../../src/engine/heatmap_view";
 import { summarizeDigraphs, type DigraphSample } from "../../src/engine/metrics";
 import { wordWrap } from "../../src/engine/typing_view";
+import { rowsText } from "../../src/engine/view_row";
 
 function sample(over: Partial<DigraphSample>): DigraphSample {
   return {
@@ -78,8 +79,9 @@ describe("formatSlowPairs", () => {
       ],
       keyEvents: [],
     });
-    const lines = formatSlowPairs(summary.rankedPairs);
-    expect(lines[0]).toBe("e␠   280ms");
+    const rows = formatSlowPairs(summary.rankedPairs);
+    expect(rowsText(rows)[0]).toBe("e␠   280ms");
+    expect(rows[0]![0]).toMatchObject({ role: "wrong" }); // slow pairs are painted wrong
   });
 
   test("drops cold pairs and caps at the limit", () => {
@@ -88,7 +90,7 @@ describe("formatSlowPairs", () => {
       { pair: "cd", displayPair: "cd", count: 1, medianLatencyMs: 200, maxLatencyMs: 200, heat: 0.5 },
       { pair: "ef", displayPair: "ef", count: 1, medianLatencyMs: 100, maxLatencyMs: 100, heat: 0 },
     ];
-    expect(formatSlowPairs(ranked, 2)).toEqual(["ab   300ms", "cd   200ms"]);
+    expect(rowsText(formatSlowPairs(ranked, 2))).toEqual(["ab   300ms", "cd   200ms"]);
   });
 
   test("no slow pairs → empty list", () => {

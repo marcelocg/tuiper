@@ -1,9 +1,10 @@
 import { raceProgress, type RaceInput, type RacerId } from "./race_progress";
+import { span, type Row, type Span } from "./view_row";
 
 // Pure view mapping for the live race strip: race progress (0–1 per lane) → a
-// glyph column on a fixed-width track. Kept free of OpenTUI so the strip can be
-// asserted on plain strings; the shell owns coloring (a distinct glyph color per
-// lane) and positioning. Updated by the shell on the ~100ms tick during a run.
+// labeled track with the moving glyph in its lane role. Kept free of OpenTUI so
+// the strip can be asserted below the seam; the shell supplies localized labels,
+// track width, and paints. Updated by the shell on the ~100ms tick during a run.
 
 /** The moving racer marker and the empty-track fill. */
 export const TRACK_GLYPH = "●";
@@ -50,13 +51,33 @@ export function raceLanes(input: RaceInput, trackWidth: number): RaceLane[] {
   });
 }
 
+/** Glyph role per lane: the user (correct) chases the fast marker (wrong), ahead
+ *  of the slow one (pending). Replaces the shell's old raceGlyphColor map. */
+const GLYPH_ROLE: Record<RacerId, "pending" | "correct" | "wrong"> = {
+  slow: "pending",
+  you: "correct",
+  fast: "wrong",
+};
+
 /**
- * The race strip as plain text lines — one labeled lane each, e.g.
- * `Slow ●·····`. The shell renders a colored version from `raceLanes`; this is
- * the text-snapshot / simple-shell path.
+ * The race strip as Styled Rows — one labeled lane each, e.g. `Slow ●·····`. The
+ * label + track fill are chrome; the moving glyph carries its lane role. `labels`
+ * supplies the localized lane names and `labelWidth` aligns the track start
+ * across locales. Replaces the old plain-text renderRaceStrip and the shell's
+ * per-lane track re-slice.
  */
-export function renderRaceStrip(input: RaceInput, trackWidth: number): string[] {
-  return raceLanes(input, trackWidth).map(
-    (lane) => `${lane.label.padEnd(LABEL_WIDTH)} ${lane.track}`,
-  );
+export function raceRows(
+  input: RaceInput,
+  trackWidth: number,
+  labels: Record<RacerId, string>,
+  labelWidth: number = LABEL_WIDTH,
+): Row[] {
+  return raceLanes(input, trackWidth).map((lane) => {
+    const spans: Span[] = [span("chrome", `${labels[lane.id].padEnd(labelWidth)} `)];
+    if (lane.glyphIndex > 0) spans.push(span("chrome", TRACK_FILL.repeat(lane.glyphIndex)));
+    spans.push(span(GLYPH_ROLE[lane.id], lane.track[lane.glyphIndex]!));
+    const trailing = lane.track.length - lane.glyphIndex - 1;
+    if (trailing > 0) spans.push(span("chrome", TRACK_FILL.repeat(trailing)));
+    return spans;
+  });
 }

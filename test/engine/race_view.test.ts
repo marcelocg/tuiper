@@ -4,9 +4,12 @@ import {
   TRACK_GLYPH,
   glyphColumn,
   raceLanes,
-  renderRaceStrip,
+  raceRows,
 } from "../../src/engine/race_view";
+import { rowsText } from "../../src/engine/view_row";
 import { calculateMetrics } from "../../src/engine/metrics";
+
+const LABELS = { slow: "Slow", you: "You", fast: "Fast" } as const;
 import {
   correctCharacters,
   createSession,
@@ -62,18 +65,27 @@ describe("raceLanes", () => {
   });
 });
 
-describe("renderRaceStrip", () => {
-  test("one labeled line per lane, glyph at the mapped column", () => {
-    const lines = renderRaceStrip({ elapsedMs: 0, durationSeconds: 30, userWpm: 0 }, 6);
-    expect(lines).toEqual([
+describe("raceRows", () => {
+  test("one labeled row per lane, glyph at the mapped column", () => {
+    const rows = raceRows({ elapsedMs: 0, durationSeconds: 30, userWpm: 0 }, 6, LABELS);
+    expect(rowsText(rows)).toEqual([
       `Slow ${TRACK_GLYPH}${TRACK_FILL.repeat(5)}`,
       `You  ${TRACK_GLYPH}${TRACK_FILL.repeat(5)}`,
       `Fast ${TRACK_GLYPH}${TRACK_FILL.repeat(5)}`,
     ]);
   });
 
+  test("the moving glyph carries its lane role (slow/you/fast → pending/correct/wrong)", () => {
+    const rows = raceRows({ elapsedMs: 0, durationSeconds: 30, userWpm: 0 }, 6, LABELS);
+    const glyphRole = (row: (typeof rows)[number]) =>
+      row.find((s) => "role" in s && (s.text === TRACK_GLYPH));
+    expect(glyphRole(rows[0]!)).toMatchObject({ role: "pending" });
+    expect(glyphRole(rows[1]!)).toMatchObject({ role: "correct" });
+    expect(glyphRole(rows[2]!)).toMatchObject({ role: "wrong" });
+  });
+
   test("the fast lane reaches the far end at the end of the drill", () => {
-    const lines = renderRaceStrip({ elapsedMs: 30000, durationSeconds: 30, userWpm: 80 }, 10);
+    const lines = rowsText(raceRows({ elapsedMs: 30000, durationSeconds: 30, userWpm: 80 }, 10, LABELS));
     expect(lines[2]!.endsWith(TRACK_GLYPH)).toBe(true); // Fast finished
   });
 });

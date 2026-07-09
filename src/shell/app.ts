@@ -60,7 +60,7 @@ import {
   type Chunk,
   type Palette,
 } from "./theme";
-import { windowClip, type Row } from "../engine/view_row";
+import { cellsToRows, span, windowClip, type Row } from "../engine/view_row";
 
 // Thin OpenTUI shell above the engine seam: it translates real key events into
 // engine commands, applies them, and renders engine view data to the terminal.
@@ -525,40 +525,30 @@ function buildResultsPanel(
   strings: UIStrings,
 ): StyledText {
   const result = buildResult(state, now);
-  // Accumulate rows (each a chunk list), then join with newlines once — the row
-  // count is the single source of truth for the remaining heat-map budget, so
-  // no hand-kept line math can drift out of sync with what is emitted.
-  const rows: Chunk[][] = [];
+  // Accumulate Styled Rows — the row count is the single source of truth for the
+  // remaining heat-map budget, so no hand-kept line math can drift out of sync
+  // with what is emitted. One paint() call realizes color at the end.
+  const rows: Row[] = [];
 
-  for (const line of formatResultPanel(result, strings.results)) {
-    rows.push([chunk(line, palette.correct)]);
-  }
+  rows.push(...formatResultPanel(result, strings.results));
 
   const slowPairs = formatSlowPairs(result.digraphs.rankedPairs);
   if (slowPairs.length > 0) {
-    rows.push([], [chunk(strings.results.slowestPairs, palette.chrome)]);
-    for (const line of slowPairs) rows.push([chunk(line, palette.wrong)]);
+    rows.push([], [span("chrome", strings.results.slowestPairs)]);
+    rows.push(...slowPairs);
   }
 
   // Heat-map replay of the excerpt, wrapped to width and windowed to whatever
-  // height remains under the metrics + slow-pairs block (cursor is always 0 —
-  // this is a static replay, so the top of the excerpt stays anchored).
-  const heatLines = wordWrap(computeHeatCells(state.target, result.digraphs.samples), width);
+  // height remains under the metrics + slow-pairs block (top is always 0 — this
+  // is a static replay, so the top of the excerpt stays anchored).
+  const heatRows = cellsToRows(wordWrap(computeHeatCells(state.target, result.digraphs.samples), width));
   const remaining = height - rows.length - 1; // -1 for the blank spacer row
-  if (remaining >= 1 && heatLines.length > 0) {
+  if (remaining >= 1 && heatRows.length > 0) {
     rows.push([]); // blank spacer above the heat map
-    const win = visibleWindow(heatLines.length, 0, remaining);
-    for (let r = win.start; r < win.end; r++) {
-      rows.push(heatLines[r]!.map((cell) => heatCellToChunk(cell, palette, TRUECOLOR)));
-    }
+    rows.push(...windowClip(heatRows, { top: 0, width, height: remaining }));
   }
 
-  const chunks: Chunk[] = [];
-  rows.forEach((row, i) => {
-    chunks.push(...row);
-    if (i < rows.length - 1) chunks.push(chunk("\n"));
-  });
-  return new StyledText(chunks);
+  return paint(rows, palette, TRUECOLOR);
 }
 
 /**

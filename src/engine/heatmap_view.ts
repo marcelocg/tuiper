@@ -1,5 +1,6 @@
 import type { DigraphSample, RankedPair } from "./metrics";
 import type { CharCell } from "./typing_view";
+import { span, type Row } from "./view_row";
 
 // Pure view mapping for the post-run digraph heat map: the excerpt is replayed
 // with a per-character heat (0–1) and a ranked slow-pairs list. The shell turns
@@ -51,9 +52,9 @@ export function computeHeatCells(
 export function formatSlowPairs(
   rankedPairs: readonly RankedPair[],
   limit = 3,
-): string[] {
+): Row[] {
   return rankedPairs
     .filter((pair) => pair.heat > 0)
     .slice(0, limit)
-    .map((pair) => `${pair.displayPair.padEnd(4)} ${pair.medianLatencyMs}ms`);
+    .map((pair) => [span("wrong", `${pair.displayPair.padEnd(4)} ${pair.medianLatencyMs}ms`)]);
 }

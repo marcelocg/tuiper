@@ -52,9 +52,7 @@ import {
 import { localeFromEnv, nextLocale, type Locale } from "../engine/locale";
 import { stringsFor, type UIStrings } from "../engine/strings";
 import {
-  cellToChunk,
   chunk,
-  heatCellToChunk,
   paint,
   paletteFor,
   type Chunk,
@@ -502,13 +500,9 @@ function buildTooSmall(
 /** Render the current session onto the typing surface as a StyledText grid. */
 function buildSurface(state: SessionState, width: number, height: number, palette: Palette): StyledText {
   const lines = wordWrap(computeCells(state), width);
+  // Cursor-biased scroll decides the top line; windowClip fits it to the surface.
   const win = visibleWindow(lines.length, cursorRow(lines), height);
-  const chunks: Chunk[] = [];
-  for (let r = win.start; r < win.end; r++) {
-    for (const cell of lines[r]!) chunks.push(cellToChunk(cell, palette));
-    if (r < win.end - 1) chunks.push(chunk("\n"));
-  }
-  return new StyledText(chunks);
+  return paint(windowClip(cellsToRows(lines), { top: win.start, width, height }), palette);
 }
 
 /**
@@ -568,20 +562,12 @@ function buildProfilePanel(
   // Split the surface height between the two metric charts, reserving rows for
   // the title, the two stat headlines, and spacers (~5 chrome rows).
   const chartHeight = Math.max(1, Math.floor((height - 5) / 2));
-  const lines = formatProfile(buildProfile(store.all()), chartWidth, chartHeight, strings.profile);
+  const rows = formatProfile(buildProfile(store.all()), chartWidth, chartHeight, strings.profile);
   // Never overflow the surface into the footer — window to the visible height
   // (from the top), matching how the typing/results panels clamp their content.
-  const win = visibleWindow(lines.length, 0, height);
-  const visible = lines.slice(win.start, win.end);
-
-  const chunks: Chunk[] = [];
-  visible.forEach((line, i) => {
-    // Braille chart rows carry the trend color; text rows are chrome.
-    const color = /[⠀-⣿]/.test(line) ? palette.correct : palette.chrome;
-    chunks.push(chunk(line, color));
-    if (i < visible.length - 1) chunks.push(chunk("\n"));
-  });
-  return new StyledText(chunks);
+  // Chart vs text coloring now rides on each row's role (correct vs chrome), so
+  // the old braille-glyph regex is gone.
+  return paint(windowClip(rows, { top: 0, width, height }), palette);
 }
 
 /**

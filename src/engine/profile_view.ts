@@ -6,6 +6,7 @@
 import { brailleChart } from "./braille_chart";
 import type { Profile, TrendStat } from "./profile";
 import { stringsFor, type ProfileStrings } from "./strings";
+import { span, type Row } from "./view_row";
 
 /** Shown when there is no history yet to chart (English default). */
 export const EMPTY_HISTORY_MESSAGE = stringsFor("en").profile.empty;
@@ -23,22 +24,23 @@ export function formatProfile(
   chartWidth: number,
   chartHeight: number,
   strings: ProfileStrings = stringsFor("en").profile,
-): string[] {
+): Row[] {
   if (profile.sessionCount === 0) {
-    return [strings.title, "", strings.empty];
+    return [[span("chrome", strings.title)], [], [span("chrome", strings.empty)]];
   }
 
   return [
-    strings.title,
-    `${strings.sessions.padEnd(LABEL_WIDTH)}${profile.sessionCount}`,
-    "",
+    [span("chrome", strings.title)],
+    [span("chrome", `${strings.sessions.padEnd(LABEL_WIDTH)}${profile.sessionCount}`)],
+    [],
     ...metricBlock(strings.wpm, profile.wpm, profile.wpmSeries, "", chartWidth, chartHeight, strings),
-    "",
+    [],
     ...metricBlock(strings.accuracy, profile.accuracy, profile.accuracySeries, "%", chartWidth, chartHeight, strings),
   ];
 }
 
-/** One metric's stat row followed by its braille trend chart. */
+/** One metric's stat row (chrome) followed by its braille trend chart (correct,
+ *  the trend color). The role replaces the shell's old braille-glyph regex. */
 function metricBlock(
   label: string,
   stat: TrendStat,
@@ -47,10 +49,13 @@ function metricBlock(
   chartWidth: number,
   chartHeight: number,
   strings: ProfileStrings,
-): string[] {
+): Row[] {
   const headline =
     `${label.padEnd(LABEL_WIDTH)}` +
     `${strings.best} ${stat.best}${suffix} · ${strings.avg} ${stat.average}${suffix} · ` +
     `${strings.recent} ${stat.recent}${suffix}`;
-  return [headline, ...brailleChart(series, chartWidth, chartHeight)];
+  return [
+    [span("chrome", headline)],
+    ...brailleChart(series, chartWidth, chartHeight).map((line) => [span("correct", line)]),
+  ];
 }

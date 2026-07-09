@@ -55,10 +55,12 @@ import {
   cellToChunk,
   chunk,
   heatCellToChunk,
+  paint,
   paletteFor,
   type Chunk,
   type Palette,
 } from "./theme";
+import { windowClip, type Row } from "../engine/view_row";
 
 // Thin OpenTUI shell above the engine seam: it translates real key events into
 // engine commands, applies them, and renders engine view data to the terminal.
@@ -229,7 +231,7 @@ export async function runApp(): Promise<CliRenderer> {
    * so recomputing per scroll keypress is fine; profile reads history (compaction
    * cost) and is drawn from a fixed layout, so it is not scrolled here.
    */
-  function overlayContentLines(): string[] | null {
+  function overlayContentLines(): Row[] | null {
     if (overlay === "help") return formatHelp(strings.help);
     if (overlay === "sources") return formatSources(excerpts, strings.sources);
     return null;
@@ -593,53 +595,21 @@ function buildProfilePanel(
 }
 
 /**
- * A scrollable text overlay (help keybindings, sources attribution): window
- * `lines` to `height` from the `scroll` offset (top visible line) and paint it.
- * Both overlays share this — help is short and usually shows whole, sources
- * (PRD story 47) can exceed the surface for a long corpus and scrolls. The real
- * title (line 0) is emphasized only when it is actually in view; once scrolled
- * past, every visible row is chrome (no entry masquerades as the heading).
+ * A scrollable Styled-Row overlay (help keybindings, sources attribution):
+ * window the rows to `height` from the `scroll` offset (top visible line) and
+ * paint them. Both overlays share this — help is short and usually shows whole,
+ * sources (PRD story 47) can exceed the surface for a long corpus and scrolls.
+ * The heading carries the `title` role only on the first row, so once scrolled
+ * past the top it leaves the window and no entry masquerades as the heading.
  */
 function buildScrollPanel(
-  lines: readonly string[],
+  rows: readonly Row[],
   scroll: number,
   width: number,
   height: number,
   palette: Palette,
 ): StyledText {
-  const maxScroll = Math.max(0, lines.length - height);
-  const start = clamp(scroll, 0, maxScroll);
-  const visible = lines.slice(start, start + height);
-  return panelFromLines(visible, start === 0, width, palette);
-}
-
-/**
- * Paint text lines as a StyledText: the title row emphasized (only when
- * `titleVisible`, i.e. it is the true top line), rest chrome. Each line is
- * clipped to `width` (the surface never wraps) so a long attribution can't spill
- * past the terminal edge into the footer.
- */
-function panelFromLines(
-  lines: readonly string[],
-  titleVisible: boolean,
-  width: number,
-  palette: Palette,
-): StyledText {
-  const chunks: Chunk[] = [];
-  lines.forEach((line, i) => {
-    const color = titleVisible && i === 0 ? palette.correct : palette.chrome;
-    chunks.push(chunk(clipTo(line, width), color));
-    if (i < lines.length - 1) chunks.push(chunk("\n"));
-  });
-  return new StyledText(chunks);
-}
-
-/** Clip a line to at most `width` cells, marking truncation with an ellipsis. */
-function clipTo(line: string, width: number): string {
-  const chars = [...line];
-  if (chars.length <= width) return line;
-  if (width <= 1) return chars.slice(0, Math.max(0, width)).join("");
-  return chars.slice(0, width - 1).join("") + "…";
+  return paint(windowClip(rows, { top: scroll, width, height }), palette);
 }
 
 /** Persistent hint bar: duration + category + theme + locale + controls. */

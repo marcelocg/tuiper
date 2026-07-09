@@ -1,6 +1,7 @@
-import { RGBA } from "@opentui/core";
+import { RGBA, StyledText } from "@opentui/core";
 import type { CharCell } from "../engine/typing_view";
 import type { ThemeName } from "../engine/theme";
+import type { Role, Row, Span } from "../engine/view_row";
 
 // The two color themes (Slate / Rush), each mapping frank_type's CSS-variable
 // roles to terminal colors. A Palette is the shell-side realization of a
@@ -137,4 +138,51 @@ export function heatToBg(heat: number, truecolor = true): RGBA | undefined {
 export function heatCellToChunk(cell: CharCell, palette: Palette, truecolor = true): Chunk {
   const bg = heatToBg(cell.heat ?? 0, truecolor);
   return chunk(cell.char, bg ? palette.heatFg : palette.pending, bg);
+}
+
+// --- Paint: the view seam's adapter (Styled Rows -> terminal) ----------------
+
+/** Resolve a discrete Role to its palette foreground. `title` reuses `correct`
+ *  (byte-for-byte with the old shell) but stays a distinct role so a theme can
+ *  diverge later. */
+function roleFg(role: Exclude<Role, "cursor">, palette: Palette): RGBA {
+  switch (role) {
+    case "correct":
+    case "title":
+      return palette.correct;
+    case "wrong":
+      return palette.wrong;
+    case "pending":
+      return palette.pending;
+    case "chrome":
+      return palette.chrome;
+  }
+}
+
+/** Map one Span to a colored chunk: heat spans interpolate a background; the
+ *  cursor is a fg/bg block; every other role is a plain foreground. */
+function spanToChunk(s: Span, palette: Palette, truecolor: boolean): Chunk {
+  if ("heat" in s) {
+    const bg = heatToBg(s.heat, truecolor);
+    return chunk(s.text, bg ? palette.heatFg : palette.pending, bg);
+  }
+  if (s.role === "cursor") return chunk(s.text, palette.cursorFg, palette.cursorBg);
+  return chunk(s.text, roleFg(s.role, palette));
+}
+
+/** Flatten Rows to chunks in the active palette, a newline chunk between rows
+ *  (never trailing). The assertable core of `paint`. */
+export function rowsToChunks(rows: readonly Row[], palette: Palette, truecolor = true): Chunk[] {
+  const chunks: Chunk[] = [];
+  rows.forEach((row, i) => {
+    for (const s of row) chunks.push(spanToChunk(s, palette, truecolor));
+    if (i < rows.length - 1) chunks.push(chunk("\n"));
+  });
+  return chunks;
+}
+
+/** The Paint adapter: Styled Rows -> OpenTUI StyledText. The one place terminal
+ *  color is realized; kept assembly-only (layout is `windowClip`, below the seam). */
+export function paint(rows: readonly Row[], palette: Palette, truecolor = true): StyledText {
+  return new StyledText(rowsToChunks(rows, palette, truecolor));
 }

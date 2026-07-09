@@ -11,7 +11,7 @@ jobs:
     name: Test & typecheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.14"
@@ -40,13 +40,13 @@ jobs:
             artifact: dist/tuiper-windows-x64.exe
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.14"
       - run: bun install --frozen-lockfile
       - run: bun run ${{ matrix.script }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: tuiper-${{ matrix.label }}
           path: ${{ matrix.artifact }}
@@ -59,7 +59,7 @@ jobs:
     permissions:
       contents: write # required to create/update the Release
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: dist
           merge-multiple: true

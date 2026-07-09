@@ -50,13 +50,7 @@ import {
 } from "../engine/terminal";
 import { localeFromEnv, nextLocale, type Locale } from "../engine/locale";
 import { stringsFor, type UIStrings } from "../engine/strings";
-import {
-  chunk,
-  paint,
-  paletteFor,
-  type Chunk,
-  type Palette,
-} from "./theme";
+import { paint, paletteFor, type Palette } from "./theme";
 import { cellsToRows, span, windowClip, type Row } from "../engine/view_row";
 
 // Thin OpenTUI shell above the engine seam: it translates real key events into
@@ -417,17 +411,17 @@ function buildHeader(
 ): StyledText {
   const status = sessionStatus(state);
   if (status === "finished") {
-    return new StyledText([
-      chunk(strings.header.done(state.durationSeconds), palette.correct),
-      chunk(strings.header.quitHint, palette.chrome),
-    ]);
+    return paint(
+      [[span("correct", strings.header.done(state.durationSeconds)), span("chrome", strings.header.quitHint)]],
+      palette,
+    );
   }
   const secs = remainingSeconds(state, now);
   const label = status === "active" ? strings.header.typing : strings.header.ready;
-  return new StyledText([
-    chunk(`${secs}s`, secs <= 5 ? palette.wrong : palette.chrome),
-    chunk(`  ·  ${label}`, palette.chrome),
-  ]);
+  return paint(
+    [[span(secs <= 5 ? "wrong" : "chrome", `${secs}s`), span("chrome", `  ·  ${label}`)]],
+    palette,
+  );
 }
 
 /**
@@ -474,12 +468,7 @@ function buildTooSmall(
   strings: UIStrings,
 ): StyledText {
   const lines = terminalTooSmallLines(width, height, strings.terminal);
-  const chunks: Chunk[] = [];
-  lines.forEach((line, i) => {
-    chunks.push(chunk(line, palette.chrome));
-    if (i < lines.length - 1) chunks.push(chunk("\n"));
-  });
-  return new StyledText(chunks);
+  return paint(lines.map((line) => [span("chrome", line)]), palette);
 }
 
 /** Render the current session onto the typing surface as a StyledText grid. */
@@ -590,7 +579,7 @@ function buildFooter(
         : overlay === "help"
           ? strings.help.closeHint
           : strings.sources.closeHint;
-    return new StyledText([chunk(closeHint, palette.chrome)]);
+    return paint([[span("chrome", closeHint)]], palette);
   }
   // Category shows its localized display name; theme/locale show their stable
   // identifiers (slate/rush, en/pt-BR) so the active choice is unambiguous. The
@@ -605,7 +594,7 @@ function buildFooter(
     ready: sessionStatus(state) === "ready",
     width,
   });
-  return new StyledText([chunk(line, palette.chrome)]);
+  return paint([[span("chrome", line)]], palette);
 }
 
 export function cleanup(renderer: CliRenderer): void {

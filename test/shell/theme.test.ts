@@ -4,10 +4,12 @@ import {
   heatCellToChunk,
   heatToBg,
   paletteFor,
+  rowsToChunks,
   rush,
   slate,
 } from "../../src/shell/theme";
 import type { CharCell } from "../../src/engine/typing_view";
+import { heat, span } from "../../src/engine/view_row";
 import type { RGBA } from "@opentui/core";
 
 function cell(over: Partial<CharCell>): CharCell {
@@ -113,5 +115,44 @@ describe("heatCellToChunk", () => {
 
   test("missing heat is treated as cold", () => {
     expect(heatCellToChunk(cell({ char: "a" }), slate).bg).toBeUndefined();
+  });
+});
+
+describe("rowsToChunks", () => {
+  test("resolves each discrete role to its palette fg; title reuses correct", () => {
+    const chunks = rowsToChunks([[span("correct", "a"), span("wrong", "b"), span("pending", "c"), span("chrome", "d"), span("title", "e")]], slate);
+    expect(chunks.map((c) => c.text)).toEqual(["a", "b", "c", "d", "e"]);
+    expect(chunks.map((c) => c.fg)).toEqual([slate.correct, slate.wrong, slate.pending, slate.chrome, slate.correct]);
+    expect(chunks.every((c) => c.bg === undefined)).toBe(true);
+  });
+});
+
+describe("rowsToChunks — cursor, heat, newlines", () => {
+  test("cursor span -> block (cursor fg + cursor bg)", () => {
+    const [c] = rowsToChunks([[span("cursor", "x")]], slate);
+    expect(c!.fg).toBe(slate.cursorFg);
+    expect(c!.bg).toBe(slate.cursorBg);
+  });
+
+  test("hot heat span -> heat background + legible heatFg", () => {
+    const [c] = rowsToChunks([[heat("a", 0.8)]], rush);
+    expect(c!.bg).toBeDefined();
+    expect(c!.fg).toBe(rush.heatFg);
+  });
+
+  test("cold heat span (0) -> no background, dim fg", () => {
+    const [c] = rowsToChunks([[heat("a", 0)]], slate);
+    expect(c!.bg).toBeUndefined();
+    expect(c!.fg).toBe(slate.pending);
+  });
+
+  test("truecolor flag threads to the heat gradient (256-cube fallback)", () => {
+    const [c] = rowsToChunks([[heat("a", 0.5)]], slate, false);
+    for (const ch of ints(c!.bg!)) expect(CUBE).toContain(ch);
+  });
+
+  test("a newline chunk separates rows, never trailing", () => {
+    const chunks = rowsToChunks([[span("chrome", "a")], [span("chrome", "b")]], slate);
+    expect(chunks.map((c) => c.text)).toEqual(["a", "\n", "b"]);
   });
 });

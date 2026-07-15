@@ -1,6 +1,5 @@
 import {
   createCliRenderer,
-  StyledText,
   TextRenderable,
   type CliRenderer,
   type KeyEvent as OpenTuiKeyEvent,
@@ -8,33 +7,22 @@ import {
 import { mapKeyToCommand } from "../engine/input_intent";
 import {
   applyCommand,
-  correctCharacters,
   createSession,
-  elapsedMs,
   finish,
-  remainingSeconds,
   sessionStatus,
   shouldFinish,
   DEFAULT_DURATION_SECONDS,
   type SessionState,
 } from "../engine/session_state";
-import {
-  computeCells,
-  cursorRow,
-  visibleWindow,
-  visualLineStartIndex,
-  wordWrap,
-} from "../engine/typing_view";
-import { computeHeatCells, formatSlowPairs } from "../engine/heatmap_view";
-import { LABEL_WIDTH, raceRows } from "../engine/race_view";
-import { calculateMetrics } from "../engine/metrics";
+import { visualLineStartIndex } from "../engine/typing_view";
 import { buildResult } from "../engine/session_result";
-import { formatResultPanel } from "../engine/results_view";
-import { buildProfile } from "../engine/profile";
-import { formatProfile } from "../engine/profile_view";
-import { formatHelp } from "../engine/help_view";
-import { formatSources } from "../engine/sources_view";
-import { formatFooter } from "../engine/footer_view";
+import {
+  composeFrame,
+  isScrollableOverlay,
+  overlayScrollMax,
+  type Overlay,
+  type ViewState,
+} from "../engine/frame";
 import { preferredSpeedBand, randomExcerptIndex } from "../engine/speed_band";
 import { excerptsForLocale, type Excerpt } from "../corpus/corpus";
 import { SessionStore } from "../storage/session_store";
@@ -43,22 +31,12 @@ import { buildStoredSession } from "../storage/session_record";
 import { SettingsStore } from "../storage/settings_store";
 import { FileSettingsStorage } from "../storage/settings_file_storage";
 import { nextTheme } from "../engine/theme";
-import {
-  prefersTruecolor,
-  terminalTooSmall,
-  terminalTooSmallLines,
-} from "../engine/terminal";
+import { prefersTruecolor } from "../engine/terminal";
 import { localeFromEnv, nextLocale, type Locale } from "../engine/locale";
 import { stringsFor, type UIStrings } from "../engine/strings";
 import { paint, paletteFor, type Palette } from "./theme";
-import { cellsToRows, span, windowClip, type Row } from "../engine/view_row";
-import {
-  SURFACE_TOP,
-  footerTop,
-  overlayHeight,
-  raceStripTop,
-  surfaceHeight,
-} from "../engine/layout";
+import type { Row } from "../engine/view_row";
+import { SURFACE_TOP, footerTop, overlayHeight } from "../engine/layout";
 
 // Thin OpenTUI shell above the engine seam: it translates real key events into
 // engine commands, applies them, and renders engine view data to the terminal.
@@ -76,9 +54,6 @@ function nextCategory(current: string): string {
   const i = CATEGORIES.indexOf(current as (typeof CATEGORIES)[number]);
   return CATEGORIES[(i + 1) % CATEGORIES.length]!;
 }
-
-/** Shell-owned full-screen overlays over the session (the engine is untouched). */
-type Overlay = "profile" | "help" | "sources";
 
 /** Signed scroll step a key requests within a scrollable overlay (0 = none). */
 function scrollDelta(key: OpenTuiKeyEvent, page: number): number {
@@ -207,60 +182,39 @@ export async function runApp(): Promise<CliRenderer> {
   for (const r of [header, surface, raceStrip, footer]) renderer.root.add(r);
 
   /**
-   * The full (unwindowed) content lines of the active scrollable overlay, or null
-   * for a non-scrollable one. Help and sources come from pure, cheap formatters,
-   * so recomputing per scroll keypress is fine; profile reads history (compaction
-   * cost) and is drawn from a fixed layout, so it is not scrolled here.
+   * Snapshot the shell's mutable state as the pure ViewState composeFrame needs.
+   * `history` is read only while the profile overlay is up, keeping `store.all()`'s
+   * compaction cost off the typing/results/race render path.
    */
-  function overlayContentLines(): Row[] | null {
-    if (overlay === "help") return formatHelp(strings.help);
-    if (overlay === "sources") return formatSources(excerpts, strings.sources);
-    return null;
+  function viewState(now: number): ViewState {
+    return {
+      state,
+      now,
+      overlay,
+      overlayScroll,
+      category,
+      locale,
+      strings,
+      excerpts,
+      history: overlay === "profile" ? store.all() : [],
+      themeName: palette.name,
+      width: renderer.width,
+      height: renderer.height,
+    };
+  }
+
+  /** Paint one pane onto its renderable; a blank pane clears it. */
+  function apply(renderable: TextRenderable, rows: readonly Row[]): void {
+    renderable.content = rows.length === 0 ? "" : paint(rows, palette, TRUECOLOR);
   }
 
   function draw(now: number): void {
-    // Below the 80×24 floor the layout can't fit — show a terminal-too-small
-    // notice and stop drawing everything else. The wall-clock timer keeps
-    // running underneath (it's timestamp-based); the resize handler redraws the
-    // real screen the moment the window grows back (#13, PRD story 49).
-    if (terminalTooSmall(renderer.width, renderer.height)) {
-      header.content = "";
-      surface.content = buildTooSmall(renderer.width, renderer.height, palette, strings);
-      raceStrip.content = "";
-      footer.content = "";
-      return;
-    }
-    if (overlay) {
-      header.content = buildHeader(state, now, palette, strings);
-      raceStrip.content = "";
-      footer.content = buildFooter(state, category, overlay, palette, locale, strings, renderer.width);
-      const h = overlayHeight(renderer.height);
-      surface.content =
-        overlay === "profile"
-          ? buildProfilePanel(store, renderer.width, h, palette, strings)
-          : overlay === "help"
-            ? buildScrollPanel(formatHelp(strings.help), overlayScroll, renderer.width, h, palette)
-            : buildScrollPanel(
-                formatSources(excerpts, strings.sources),
-                overlayScroll,
-                renderer.width,
-                h,
-                palette,
-              );
-      return;
-    }
-    header.content = buildHeader(state, now, palette, strings);
-    surface.content =
-      sessionStatus(state) === "finished"
-        ? buildResultsPanel(state, now, renderer.width, surfaceHeight(renderer.height), palette, strings)
-        : buildSurface(state, renderer.width, surfaceHeight(renderer.height), palette);
-    // Anchor the race strip to the blank row just under the surface.
-    raceStrip.top = raceStripTop(renderer.height);
-    raceStrip.content =
-      sessionStatus(state) === "active"
-        ? buildRaceStrip(state, now, renderer.width, palette, strings)
-        : "";
-    footer.content = buildFooter(state, category, overlay, palette, locale, strings, renderer.width);
+    const frame = composeFrame(viewState(now));
+    apply(header, frame.header);
+    apply(surface, frame.surface);
+    raceStrip.top = frame.raceStripTop;
+    apply(raceStrip, frame.raceStrip);
+    apply(footer, frame.footer);
   }
 
   renderer.keyInput.on("keypress", (e: OpenTuiKeyEvent) => {
@@ -276,14 +230,13 @@ export async function runApp(): Promise<CliRenderer> {
         cleanup(renderer);
         return;
       }
-      // Help and sources scroll: nav keys move the viewport; Esc/q/any other key
-      // closes. Profile is a fixed layout — any key closes it.
-      const content = overlayContentLines();
-      if (content) {
+      // Help and sources scroll: nav keys move the viewport (and are consumed even
+      // when the content fits, so they never close it); Esc/q/any other key closes.
+      // Profile is a fixed layout — any key closes it.
+      if (isScrollableOverlay(overlay)) {
         const delta = scrollDelta(e, Math.max(1, overlayHeight(renderer.height) - 1));
         if (delta !== 0) {
-          const maxScroll = Math.max(0, content.length - overlayHeight(renderer.height));
-          overlayScroll = clamp(overlayScroll + delta, 0, maxScroll);
+          overlayScroll = clamp(overlayScroll + delta, 0, overlayScrollMax(viewState(now)));
           draw(now);
           renderer.requestRender();
           return;
@@ -391,202 +344,6 @@ export async function runApp(): Promise<CliRenderer> {
   renderer.start();
   return renderer;
 }
-
-/** Countdown / status line above the typing surface. */
-function buildHeader(
-  state: SessionState,
-  now: number,
-  palette: Palette,
-  strings: UIStrings,
-): StyledText {
-  const status = sessionStatus(state);
-  if (status === "finished") {
-    return paint(
-      [[span("correct", strings.header.done(state.durationSeconds)), span("chrome", strings.header.quitHint)]],
-      palette,
-    );
-  }
-  const secs = remainingSeconds(state, now);
-  const label = status === "active" ? strings.header.typing : strings.header.ready;
-  return paint(
-    [[span(secs <= 5 ? "wrong" : "chrome", `${secs}s`), span("chrome", `  ·  ${label}`)]],
-    palette,
-  );
-}
-
-/**
- * The live race strip: three labeled lanes (Slow 60 / You / Fast 140) with a
- * glyph advancing on each 100ms tick. The user's live WPM drives their marker,
- * computed from the same metrics the results panel uses so the chase matches the
- * final number. Lane roles/track building live below the seam in raceRows.
- */
-function buildRaceStrip(
-  state: SessionState,
-  now: number,
-  width: number,
-  palette: Palette,
-  strings: UIStrings,
-): StyledText {
-  const elapsed = elapsedMs(state, now);
-  const userWpm = calculateMetrics({
-    typedEvents: state.events,
-    correctCharacters: correctCharacters(state),
-    elapsedMs: elapsed,
-    targetText: state.target,
-  }).wpm;
-  // Localized lane labels vary in width (e.g. "Fast" vs "Rápido"), so pad every
-  // lane to the widest label in the active locale — the track starts aligned.
-  const labelWidth = Math.max(
-    LABEL_WIDTH,
-    ...Object.values(strings.race).map((label) => label.length),
-  );
-  const trackWidth = Math.max(1, width - labelWidth - 1);
-  const rows = raceRows(
-    { elapsedMs: elapsed, durationSeconds: state.durationSeconds, userWpm },
-    trackWidth,
-    strings.race,
-    labelWidth,
-  );
-  return paint(rows, palette);
-}
-
-/** The terminal-too-small notice: the pure lines painted in chrome. */
-function buildTooSmall(
-  width: number,
-  height: number,
-  palette: Palette,
-  strings: UIStrings,
-): StyledText {
-  const lines = terminalTooSmallLines(width, height, strings.terminal);
-  return paint(lines.map((line) => [span("chrome", line)]), palette);
-}
-
-/** Render the current session onto the typing surface as a StyledText grid. */
-function buildSurface(state: SessionState, width: number, height: number, palette: Palette): StyledText {
-  const lines = wordWrap(computeCells(state), width);
-  // Cursor-biased scroll decides the top line; windowClip fits it to the surface.
-  const win = visibleWindow(lines.length, cursorRow(lines), height);
-  return paint(windowClip(cellsToRows(lines), { top: win.start, width, height }), palette);
-}
-
-/**
- * Post-run panel: the five headline metrics, the ranked slow-pairs list, then
- * the excerpt replayed as a digraph heat map (per-cell backgrounds). The heat
- * map appears only here — never during a run (PRD story 23).
- */
-function buildResultsPanel(
-  state: SessionState,
-  now: number,
-  width: number,
-  height: number,
-  palette: Palette,
-  strings: UIStrings,
-): StyledText {
-  const result = buildResult(state, now);
-  // Accumulate Styled Rows — the row count is the single source of truth for the
-  // remaining heat-map budget, so no hand-kept line math can drift out of sync
-  // with what is emitted. One paint() call realizes color at the end.
-  const rows: Row[] = [];
-
-  rows.push(...formatResultPanel(result, strings.results));
-
-  const slowPairs = formatSlowPairs(result.digraphs.rankedPairs);
-  if (slowPairs.length > 0) {
-    rows.push([], [span("chrome", strings.results.slowestPairs)]);
-    rows.push(...slowPairs);
-  }
-
-  // Heat-map replay of the excerpt, wrapped to width and windowed to whatever
-  // height remains under the metrics + slow-pairs block (top is always 0 — this
-  // is a static replay, so the top of the excerpt stays anchored).
-  const heatRows = cellsToRows(wordWrap(computeHeatCells(state.target, result.digraphs.samples), width));
-  const remaining = height - rows.length - 1; // -1 for the blank spacer row
-  if (remaining >= 1 && heatRows.length > 0) {
-    rows.push([]); // blank spacer above the heat map
-    rows.push(...windowClip(heatRows, { top: 0, width, height: remaining }));
-  }
-
-  return paint(rows, palette, TRUECOLOR);
-}
-
-/**
- * The profile overlay: history trends read from local storage. Braille WPM and
- * accuracy charts plus best/avg/recent headline stats, laid out to the surface
- * width/height. Read once per open/resize (never per-tick), so `store.all()`'s
- * compaction cost stays off the render loop.
- */
-function buildProfilePanel(
-  store: SessionStore,
-  width: number,
-  height: number,
-  palette: Palette,
-  strings: UIStrings,
-): StyledText {
-  const chartWidth = Math.max(1, width);
-  // Split the surface height between the two metric charts, reserving rows for
-  // the title, the two stat headlines, and spacers (~5 chrome rows).
-  const chartHeight = Math.max(1, Math.floor((height - 5) / 2));
-  const rows = formatProfile(buildProfile(store.all()), chartWidth, chartHeight, strings.profile);
-  // Never overflow the surface into the footer — window to the visible height
-  // (from the top), matching how the typing/results panels clamp their content.
-  // Chart vs text coloring now rides on each row's role (correct vs chrome), so
-  // the old braille-glyph regex is gone.
-  return paint(windowClip(rows, { top: 0, width, height }), palette);
-}
-
-/**
- * A scrollable Styled-Row overlay (help keybindings, sources attribution):
- * window the rows to `height` from the `scroll` offset (top visible line) and
- * paint them. Both overlays share this — help is short and usually shows whole,
- * sources (PRD story 47) can exceed the surface for a long corpus and scrolls.
- * The heading carries the `title` role only on the first row, so once scrolled
- * past the top it leaves the window and no entry masquerades as the heading.
- */
-function buildScrollPanel(
-  rows: readonly Row[],
-  scroll: number,
-  width: number,
-  height: number,
-  palette: Palette,
-): StyledText {
-  return paint(windowClip(rows, { top: scroll, width, height }), palette);
-}
-
-/** Persistent hint bar: duration + category + theme + locale + controls. */
-function buildFooter(
-  state: SessionState,
-  category: string,
-  overlay: Overlay | null,
-  palette: Palette,
-  locale: Locale,
-  strings: UIStrings,
-  width: number,
-): StyledText {
-  if (overlay) {
-    const closeHint =
-      overlay === "profile"
-        ? strings.profile.closeHint
-        : overlay === "help"
-          ? strings.help.closeHint
-          : strings.sources.closeHint;
-    return paint([[span("chrome", closeHint)]], palette);
-  }
-  // Category shows its localized display name; theme/locale show their stable
-  // identifiers (slate/rush, en/pt-BR) so the active choice is unambiguous. The
-  // pure formatter picks full vs. compact hints for the width (the full tail
-  // overflows the 80-col floor, so it collapses to a `? help` pointer there).
-  const line = formatFooter({
-    strings: strings.footer,
-    categoryLabel: strings.categories[category] ?? category,
-    themeName: palette.name,
-    locale,
-    durationSeconds: state.durationSeconds,
-    ready: sessionStatus(state) === "ready",
-    width,
-  });
-  return paint([[span("chrome", line)]], palette);
-}
-
 export function cleanup(renderer: CliRenderer): void {
   try {
     renderer.stop();

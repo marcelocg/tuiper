@@ -32,3 +32,19 @@ separate pure step (`windowClip`) below the seam.
 **Palette** — the shell-side realization of a theme (`slate` / `rush`): the `RGBA`
 values Paint resolves roles into. The engine chooses *which* theme is active
 (`ThemeName`); the Palette supplies its colors.
+
+**Frame** — the whole screen as pure data: one **Styled Row** list per pane
+(`header`, `surface`, `raceStrip`, `footer`) plus the race strip's anchor row. A
+blank pane is `[]`. Produced by `composeFrame`, consumed by the shell, which
+paints each pane onto its renderable. Lives in `src/engine/frame.ts`.
+
+**ViewState** — everything `composeFrame` needs to decide and lay out the screen:
+the session, the active **Overlay** and its scroll offset, category, locale,
+strings, corpus attributions, history, theme name, and terminal size. Pure inputs
+only — the shell stamps `now`, reads `history` (profile only), and supplies the
+terminal size; no store, renderer, or **Palette** crosses this seam. `composeFrame`
+is therefore *color-free*: it emits role intent, never color.
+
+**Overlay** — a full-screen panel drawn over the session without pausing it:
+`profile` (fixed layout, history trends), `help`, or `sources` (both scrollable).
+Overlays blank the race strip and reclaim its rows.

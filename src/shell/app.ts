@@ -52,16 +52,19 @@ import { localeFromEnv, nextLocale, type Locale } from "../engine/locale";
 import { stringsFor, type UIStrings } from "../engine/strings";
 import { paint, paletteFor, type Palette } from "./theme";
 import { cellsToRows, span, windowClip, type Row } from "../engine/view_row";
+import {
+  SURFACE_TOP,
+  footerTop,
+  overlayHeight,
+  raceStripTop,
+  surfaceHeight,
+} from "../engine/layout";
 
 // Thin OpenTUI shell above the engine seam: it translates real key events into
 // engine commands, applies them, and renders engine view data to the terminal.
 // All correctness-critical logic lives below the seam (pure, unit-tested).
 // The shell owns exactly two impure jobs: stamping `performance.now()` on each
 // key/tick, and driving the 100ms countdown/auto-finish loop.
-
-const SURFACE_TOP = 2;
-const FOOTER_RESERVE = 2; // blank line + footer
-const RACE_STRIP_ROWS = 4; // blank spacer + three race lanes, reserved always
 
 /** 24-bit color support; otherwise the heat map snaps to the 256-color cube. */
 const TRUECOLOR = prefersTruecolor(process.env);
@@ -198,23 +201,10 @@ export async function runApp(): Promise<CliRenderer> {
   const footer = new TextRenderable(renderer, {
     content: "",
     position: "absolute",
-    top: Math.max(SURFACE_TOP + 1, renderer.height - 1),
+    top: footerTop(renderer.height),
     left: 0,
   });
   for (const r of [header, surface, raceStrip, footer]) renderer.root.add(r);
-
-  function surfaceHeight(): number {
-    return Math.max(1, renderer.height - SURFACE_TOP - FOOTER_RESERVE - RACE_STRIP_ROWS);
-  }
-
-  /**
-   * Height available to a full-screen overlay. Overlays blank the race strip, so
-   * unlike the typing surface they reclaim those rows — the extra height keeps
-   * the help/sources panels from clipping their tail on shorter terminals.
-   */
-  function overlayHeight(): number {
-    return Math.max(1, renderer.height - SURFACE_TOP - FOOTER_RESERVE);
-  }
 
   /**
    * The full (unwindowed) content lines of the active scrollable overlay, or null
@@ -244,7 +234,7 @@ export async function runApp(): Promise<CliRenderer> {
       header.content = buildHeader(state, now, palette, strings);
       raceStrip.content = "";
       footer.content = buildFooter(state, category, overlay, palette, locale, strings, renderer.width);
-      const h = overlayHeight();
+      const h = overlayHeight(renderer.height);
       surface.content =
         overlay === "profile"
           ? buildProfilePanel(store, renderer.width, h, palette, strings)
@@ -262,10 +252,10 @@ export async function runApp(): Promise<CliRenderer> {
     header.content = buildHeader(state, now, palette, strings);
     surface.content =
       sessionStatus(state) === "finished"
-        ? buildResultsPanel(state, now, renderer.width, surfaceHeight(), palette, strings)
-        : buildSurface(state, renderer.width, surfaceHeight(), palette);
+        ? buildResultsPanel(state, now, renderer.width, surfaceHeight(renderer.height), palette, strings)
+        : buildSurface(state, renderer.width, surfaceHeight(renderer.height), palette);
     // Anchor the race strip to the blank row just under the surface.
-    raceStrip.top = SURFACE_TOP + surfaceHeight() + 1;
+    raceStrip.top = raceStripTop(renderer.height);
     raceStrip.content =
       sessionStatus(state) === "active"
         ? buildRaceStrip(state, now, renderer.width, palette, strings)
@@ -290,9 +280,9 @@ export async function runApp(): Promise<CliRenderer> {
       // closes. Profile is a fixed layout — any key closes it.
       const content = overlayContentLines();
       if (content) {
-        const delta = scrollDelta(e, Math.max(1, overlayHeight() - 1));
+        const delta = scrollDelta(e, Math.max(1, overlayHeight(renderer.height) - 1));
         if (delta !== 0) {
-          const maxScroll = Math.max(0, content.length - overlayHeight());
+          const maxScroll = Math.max(0, content.length - overlayHeight(renderer.height));
           overlayScroll = clamp(overlayScroll + delta, 0, maxScroll);
           draw(now);
           renderer.requestRender();
@@ -379,7 +369,7 @@ export async function runApp(): Promise<CliRenderer> {
   });
 
   renderer.on("resize", () => {
-    footer.top = Math.max(SURFACE_TOP + 1, renderer.height - 1);
+    footer.top = footerTop(renderer.height);
     draw(performance.now());
     renderer.requestRender();
   });

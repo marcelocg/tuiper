@@ -16,13 +16,8 @@ import {
 } from "../engine/session_state";
 import { visualLineStartIndex } from "../engine/typing_view";
 import { buildResult } from "../engine/session_result";
-import {
-  composeFrame,
-  isScrollableOverlay,
-  overlayScrollMax,
-  type Overlay,
-  type ViewState,
-} from "../engine/frame";
+import { composeFrame, overlayScrollMax, type ViewState } from "../engine/frame";
+import { isScrollableOverlay, type Overlay } from "../engine/overlay";
 import { preferredSpeedBand, randomExcerptIndex } from "../engine/speed_band";
 import { excerptsForLocale, type Excerpt } from "../corpus/corpus";
 import { SessionStore } from "../storage/session_store";

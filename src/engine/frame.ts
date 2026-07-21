@@ -31,13 +31,11 @@ import { terminalTooSmall, terminalTooSmallLines } from "./terminal";
 import { computeCells, cursorRow, visibleWindow, wordWrap } from "./typing_view";
 import { cellsToRows, span, windowClip, type Row } from "./view_row";
 import { overlayHeight, raceStripTop, surfaceHeight } from "./layout";
+import type { Overlay } from "./overlay";
 import type { Locale } from "./locale";
 import type { UIStrings } from "./strings";
 import type { ThemeName } from "./theme";
 import type { StoredSession } from "../storage/session_store";
-
-/** Full-screen overlays drawn over the session (the session is untouched). */
-export type Overlay = "profile" | "help" | "sources";
 
 /** Everything composeFrame needs to draw the screen. Pure inputs only: the
  *  shell stamps `now`, reads `history` (profile only), and supplies the terminal
@@ -219,15 +217,6 @@ function footerRows(vs: ViewState): Row[] {
     width: vs.width,
   });
   return [[span("chrome", line)]];
-}
-
-/**
- * Whether the overlay scrolls at all. Nav keys are consumed by a scrollable
- * overlay even when its content currently fits (scroll max 0) — they must not
- * fall through and close it. Profile is a fixed layout and never scrolls.
- */
-export function isScrollableOverlay(overlay: Overlay | null): boolean {
-  return overlay === "help" || overlay === "sources";
 }
 
 /**

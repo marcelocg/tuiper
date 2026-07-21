@@ -45,100 +45,43 @@ function isSpace(cell: CharCell): boolean {
   return cell.char === " ";
 }
 
-/**
- * Greedy word-wrap to `width`, never splitting a word that fits on a line.
- * Whitespace that lands at a wrap point is consumed (no leading spaces).
- * Words longer than the width are hard-split. Layout is fixed: the same
- * excerpt always wraps identically regardless of typed correctness.
- */
-export function wordWrap(cells: CharCell[], width: number): CharCell[][] {
-  const w = Math.max(1, Math.floor(width));
-  const lines: CharCell[][] = [];
-  let line: CharCell[] = [];
-  // When a space carrying the cursor is dropped at a wrap boundary, the cursor
-  // is moved onto the next placed cell — the layout stays byte-for-byte fixed
-  // (it never depends on typed progress) while the cursor is never lost.
-  let carryCursor = false;
-
-  function place(cell: CharCell): void {
-    if (carryCursor && !cell.cursor) {
-      line.push({ ...cell, cursor: true });
-      carryCursor = false;
-    } else {
-      line.push(cell);
-    }
-  }
-
-  let i = 0;
-  while (i < cells.length) {
-    const cell = cells[i]!;
-    if (isSpace(cell)) {
-      if (line.length >= w) {
-        lines.push(line);
-        line = [];
-        if (cell.cursor) carryCursor = true; // relocate cursor to the next cell
-        i++; // drop the space at the wrap boundary (no leading spaces)
-        continue;
-      }
-      place(cell);
-      i++;
-      continue;
-    }
-
-    // Measure the next word (maximal run of non-space cells).
-    let j = i;
-    while (j < cells.length && !isSpace(cells[j]!)) j++;
-    const wordLen = j - i;
-
-    if (wordLen > w) {
-      // Word can never fit: hard-split across lines.
-      for (let k = i; k < j; k++) {
-        if (line.length >= w) {
-          lines.push(line);
-          line = [];
-        }
-        place(cells[k]!);
-      }
-    } else {
-      if (line.length + wordLen > w) {
-        lines.push(line);
-        line = [];
-      }
-      for (let k = i; k < j; k++) place(cells[k]!);
-    }
-    i = j;
-  }
-
-  // A trailing cursor-space (excerpt fully typed) with nothing after it: give
-  // the block cursor its own cell so it still renders past the last character.
-  if (carryCursor) {
-    if (line.length >= w) {
-      lines.push(line);
-      line = [];
-    }
-    line.push({ char: " ", status: "pending", cursor: true });
-  }
-
-  lines.push(line);
-  return lines;
+/** One wrapped display line as a half-open range over the source sequence.
+ *  `end` excludes a space dropped at a wrap boundary, so `end` is not always the
+ *  next line's `start`. */
+interface LineSegment {
+  readonly start: number;
+  readonly end: number;
 }
 
 /**
- * Target-text indices at which each wrapped display line begins, for `width`.
- * Replicates `wordWrap`'s greedy break rules (drop the boundary space, hard-split
- * over-long words) over the raw target so a break here lands where `wordWrap`
- * would break. Drives delete-to-line-start (Ctrl-U).
+ * THE greedy wrap rule, in one place. Walks a sequence of `length` items —
+ * `isSpaceAt` tells it which are spaces — and returns the display lines as
+ * ranges. Three rules, matching frank_type:
+ *   - a space landing at a full line is consumed (no leading spaces);
+ *   - a word longer than the width is hard-split;
+ *   - a word that would overflow moves whole to the next line.
+ *
+ * Both consumers derive from this: `wordWrap` slices cells by these ranges, and
+ * `visualLineStarts` reads their starts. They cannot disagree — which matters
+ * because Ctrl-U deletes to a line start that must land exactly where the
+ * rendered text broke.
  */
-export function visualLineStarts(target: string, width: number): number[] {
+function wrapSegments(
+  length: number,
+  isSpaceAt: (index: number) => boolean,
+  width: number,
+): LineSegment[] {
   const w = Math.max(1, Math.floor(width));
-  const starts: number[] = [0];
+  const segments: LineSegment[] = [];
+  let start = 0;
   let lineLen = 0;
   let i = 0;
-  const n = target.length;
-  while (i < n) {
-    if (target[i] === " ") {
+
+  while (i < length) {
+    if (isSpaceAt(i)) {
       if (lineLen >= w) {
-        starts.push(i + 1); // wrap: the dropped space's successor starts the line
+        segments.push({ start, end: i }); // drop the space at the boundary
+        start = i + 1;
         lineLen = 0;
         i++;
         continue;
@@ -147,28 +90,91 @@ export function visualLineStarts(target: string, width: number): number[] {
       i++;
       continue;
     }
-    // Maximal run of non-space cells (a word).
+
+    // Measure the next word (maximal run of non-space items).
     let j = i;
-    while (j < n && target[j] !== " ") j++;
+    while (j < length && !isSpaceAt(j)) j++;
     const wordLen = j - i;
+
     if (wordLen > w) {
+      // Word can never fit: hard-split across lines.
       for (let k = i; k < j; k++) {
         if (lineLen >= w) {
-          starts.push(k);
+          segments.push({ start, end: k });
+          start = k;
           lineLen = 0;
         }
         lineLen++;
       }
     } else {
       if (lineLen + wordLen > w) {
-        starts.push(i);
+        segments.push({ start, end: i });
+        start = i;
         lineLen = 0;
       }
       lineLen += wordLen;
     }
     i = j;
   }
-  return starts;
+
+  segments.push({ start, end: length });
+  return segments;
+}
+
+/**
+ * Greedy word-wrap to `width`, never splitting a word that fits on a line.
+ * Whitespace that lands at a wrap point is consumed (no leading spaces).
+ * Words longer than the width are hard-split. Layout is fixed: the same
+ * excerpt always wraps identically regardless of typed correctness.
+ */
+export function wordWrap(cells: CharCell[], width: number): CharCell[][] {
+  const w = Math.max(1, Math.floor(width));
+  const segments = wrapSegments(cells.length, (i) => isSpace(cells[i]!), width);
+  const lines: CharCell[][] = [];
+  // When a space carrying the cursor is dropped at a wrap boundary, the cursor
+  // is moved onto the next placed cell — the layout stays byte-for-byte fixed
+  // (it never depends on typed progress) while the cursor is never lost.
+  let carryCursor = false;
+
+  segments.forEach((segment, s) => {
+    const line: CharCell[] = [];
+    for (let k = segment.start; k < segment.end; k++) {
+      const cell = cells[k]!;
+      if (carryCursor && !cell.cursor) {
+        line.push({ ...cell, cursor: true });
+        carryCursor = false;
+      } else {
+        line.push(cell);
+      }
+    }
+    // A space between this segment and the next was dropped at the boundary; if
+    // it carried the cursor, relocate it onto the next cell placed.
+    const next = segments[s + 1];
+    if (next && next.start === segment.end + 1 && cells[segment.end]!.cursor) {
+      carryCursor = true;
+    }
+    lines.push(line);
+  });
+
+  // A trailing cursor-space (excerpt fully typed) with nothing after it: give
+  // the block cursor its own cell so it still renders past the last character.
+  if (carryCursor) {
+    if (lines[lines.length - 1]!.length >= w) lines.push([]);
+    lines[lines.length - 1]!.push({ char: " ", status: "pending", cursor: true });
+  }
+
+  return lines;
+}
+
+/**
+ * Target-text indices at which each wrapped display line begins, for `width`.
+ * Shares `wordWrap`'s break rule (see `wrapSegments`), so a break here lands
+ * exactly where `wordWrap` breaks. Drives delete-to-line-start (Ctrl-U).
+ */
+export function visualLineStarts(target: string, width: number): number[] {
+  return wrapSegments(target.length, (i) => target[i] === " ", width).map(
+    (segment) => segment.start,
+  );
 }
 
 /**

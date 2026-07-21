@@ -31,5 +31,12 @@ export type Command =
   // Open the sources screen (per-excerpt attribution). Shell-owned overlay; the
   // engine session is untouched. Only live in ready/finished — mid-run `s` types.
   | { readonly kind: "openSources" }
+  // Scroll the active scrollable overlay by `delta` lines (signed; already
+  // resolved against the page size for PageUp/PageDown). Shell-owned: it clamps
+  // the offset against the overlay's content length and redraws.
+  | { readonly kind: "scrollOverlay"; readonly delta: number }
+  // Dismiss the active overlay. Shell-owned: it clears the overlay and its
+  // scroll offset. The session underneath is untouched.
+  | { readonly kind: "closeOverlay" }
   | { readonly kind: "quit" }
   | { readonly kind: "none" };

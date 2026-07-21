@@ -282,6 +282,10 @@ export function applyCommand(
     case "openProfile":
     case "openHelp":
     case "openSources":
+    // Overlay control is shell state (which panel is up, how far it is
+    // scrolled). The session underneath is untouched.
+    case "scrollOverlay":
+    case "closeOverlay":
     case "quit":
     case "none":
       return state;

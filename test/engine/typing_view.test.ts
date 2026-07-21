@@ -141,6 +141,38 @@ describe("visualLineStarts — wrap-aligned line boundaries", () => {
     }
   });
 
+  test("start INDICES match wordWrap's breaks across widths and shapes", () => {
+    // The invariant Ctrl-U depends on: a line start reported here must be the
+    // exact target index where wordWrap actually broke. Comparing indices (not
+    // just the first character, which can coincide) over shapes that exercise
+    // every rule — plain wrapping, hard-split, runs of spaces, exact fits.
+    const targets = [
+      "the quick brown fox jumps over the lazy dog",
+      "abcdefghijklmnop", // one long word: hard-split only
+      "aaa bbb ccc ddd",
+      "supercalifragilistic word", // over-long word then a normal one
+      "ab cd ef gh ij kl",
+      "a bb ccc dddd eeeee ffffff",
+    ];
+    for (const target of targets) {
+      for (let width = 1; width <= 20; width++) {
+        const lines = wordWrap(computeCells({ target, input: "" }), width);
+        // Rebuild the start index of each rendered line: advance past the line's
+        // own cells, then past a space consumed at the wrap boundary.
+        const expected: number[] = [];
+        let pos = 0;
+        for (const line of lines) {
+          if (pos > target.length) break; // trailing cursor-only line
+          expected.push(pos);
+          pos += line.length;
+          if (target[pos] === " ") pos += 1; // the dropped boundary space
+        }
+        const starts = visualLineStarts(target, width);
+        expect({ target, width, starts }).toEqual({ target, width, starts: expected });
+      }
+    }
+  });
+
   test("single line when everything fits", () => {
     expect(visualLineStarts("hello world", 80)).toEqual([0]);
   });

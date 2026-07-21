@@ -4,7 +4,7 @@
 
 **Provenance:** Ported from Fabio Akita's frank_type (MIT, © 2026 Fabio Akita). tuiper ships MIT, retains Akita's copyright, credits frank_type. Corpus is public-domain prose.
 
-**Status of prerequisites:** OpenTUI validated by a throwaway spike — all 5 runtime unknowns green (see `prototype-spike/NOTES.md`). Design settled across 21 decisions in a grilling session. This PRD synthesizes both.
+**Status of prerequisites:** OpenTUI validated by a throwaway spike — all 5 runtime unknowns green (its findings are absorbed below; the spike itself has since been removed). Design settled across 21 decisions in a grilling session. This PRD synthesizes both.
 
 ---
 
@@ -189,13 +189,13 @@ The value of frank_type is its timing/metrics engine; tuiper preserves that exac
 
 **Level 1 — Input-intent mapping unit tests.** The pure `(KeyEvent, sessionState) → Command` function is correctness-critical (it decides whether a key types or commands). Golden-test the state-gated rule in every state (Ready/Finished vs Active), the delete-mode resolution, kitty vs. legacy Backspace disambiguation, and paste rejection.
 
-**Level 2 — View snapshot tests.** Render key screens (typing surface with mixed correct/wrong/pending, heat-map overlay, race strip, braille charts) to an in-memory `OptimizedBuffer` and snapshot the cell grid (characters + colors). Buffer read-back was proven headless in the spike (`probe2`). Catches layout/color regressions without a real TTY.
+**Level 2 — View snapshot tests.** Render key screens (typing surface with mixed correct/wrong/pending, heat-map overlay, race strip, braille charts) to an in-memory `OptimizedBuffer` and snapshot the cell grid (characters + colors). Buffer read-back was proven headless in the spike. Catches layout/color regressions without a real TTY.
 
 **Level 3 — Headless integration smoke tests (few).** Boot `createCliRenderer` headless, inject a synthetic keypress sequence, and assert on the resulting stored session (via the in-memory storage fake) and/or the final buffer. A handful, covering the end-to-end path key → engine → store → render.
 
-**Level 4 — Manual / interactive probe (not automated).** Keep a `probe3`-style interactive harness for the genuinely un-unit-testable residue: flicker, real-terminal truecolor, live timing feel, and kitty-vs-legacy behavior across terminals (tmux, ssh, Windows Terminal).
+**Level 4 — Manual / interactive probe (not automated).** Keep an interactive harness for the genuinely un-unit-testable residue: flicker, real-terminal truecolor, live timing feel, and kitty-vs-legacy behavior across terminals (tmux, ssh, Windows Terminal). Run the app directly (`bun run index.ts`) in a real terminal; the automated slice of this is the `verify` skill.
 
-**Prior art:** the throwaway probes in `prototype-spike/` (`probe1`/`probe1b` key discrimination, `probe2` buffer read-back, `probe3` interactive) demonstrate the headless-render and event-injection patterns the automated tests build on. frank_type's own `test/` suite is prior art for the engine golden values.
+**Prior art:** the throwaway spike probes (key discrimination, buffer read-back, interactive) demonstrated the headless-render and event-injection patterns the automated tests build on; they have since been removed, superseded by the `verify` skill, which drives the real app in a pseudo-terminal. frank_type's own `test/` suite is prior art for the engine golden values.
 
 ## Out of Scope
 
@@ -209,7 +209,7 @@ The value of frank_type is its timing/metrics engine; tuiper preserves that exac
 
 ## Further Notes
 
-- **Spike evidence:** `prototype-spike/NOTES.md` holds full verdicts, the verified boot pattern, and API references. The `prototype-spike/` directory is throwaway and may be deleted once this PRD is accepted (its decisions are captured here).
+- **Spike evidence:** the spike's verdicts, boot pattern, and gotchas are captured in this PRD (see "Renderer boot" and "Input handling"). The throwaway `prototype-spike/` directory was removed once this PRD was accepted, as planned.
 - **Environment:** Bun 1.3.14 installed at `C:\Users\49768117\.bun\bin\bun.exe` (not on permanent PATH — prefix or add to PATH). OpenTUI 0.4.2 ships a native `opentui.dll` for win32-x64 as an auto-installed optional dependency (no build step); darwin/linux/win × x64/arm64 all shipped.
 - **Original design record:** the 21 locked decisions and full frank_type feature inventory (with exact formulas) are in `C:\Users\49768117\AppData\Local\Temp\tuiper-handoff-spike.md`, kept for reference.
 - **Not yet a git repository.** Initialize before issue-tracker setup and implementation.

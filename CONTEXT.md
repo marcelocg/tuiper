@@ -43,7 +43,9 @@ the session, the active **Overlay** and its scroll offset, category, locale,
 strings, corpus attributions, history, theme name, and terminal size. Pure inputs
 only — the shell stamps `now`, reads `history` (profile only), and supplies the
 terminal size; no store, renderer, or **Palette** crosses this seam. `composeFrame`
-is therefore *color-free*: it emits role intent, never color.
+is therefore *color-free*: it emits role intent, never color — see
+[ADR-0001](docs/adr/0001-color-free-compose-frame.md), which records why the
+Palette is deliberately kept out (`themeName` is text the footer shows, not color).
 
 **Overlay** — a full-screen panel drawn over the session without pausing it:
 `profile` (fixed layout, history trends), `help`, or `sources` (both scrollable).

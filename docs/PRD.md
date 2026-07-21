@@ -108,10 +108,15 @@ The value of frank_type is its timing/metrics engine; tuiper preserves that exac
 - **Renderer boot (from spike):** `createCliRenderer({ targetFps: 10, useKittyKeyboard: {}, exitOnCtrlC: false })`, then subscribe `keyInput.on("keypress")`, `keyInput.on("paste")`, `on("resize")`, drive animation via `setFrameCallback`, and `start()`. `targetFps: 10` gives the ~100ms tick frank_type uses; the native renderer double-buffers and diffs cells (no flicker).
 
 ### Architecture and seams
-- **One primary test seam: the engine boundary.** All ported logic is pure TypeScript (data in → data out, no OpenTUI/TTY/fs). The OpenTUI shell above it is thin wiring.
+
+> The seam descriptions below track the code as it stands. Where a decision was
+> revisited after v1.0.0, `docs/adr/` records the reasoning; `CONTEXT.md` is the
+> glossary for the terms in bold.
+
+- **One primary test seam: the engine boundary.** All ported logic is pure TypeScript (data in → data out, no OpenTUI/TTY/fs). The OpenTUI shell above it is thin wiring. No module under `src/engine/` or `src/corpus/` imports `@opentui/core`.
 - **Modules ported ~1:1** from frank_type `app/javascript/lib`: `typing/metrics`, `typing/session_state`, `typing/speed_band`, `typing/race_progress`, `typing/deletion`, and the digraph summarization (in `metrics`). `services/typing/text_normalizer.rb` is ported from Ruby to TS. `storage/session_store` is ported with its compaction logic intact.
-- **Input-intent mapping is a pure function below the seam:** `(KeyEvent, sessionState) → Command`. It encodes the state-gated input rule and the delete-mode resolution; it never touches OpenTUI. This keeps the correctness-critical decision logic testable.
-- **View mapping is pure where practical:** `(viewModel) → cells/StyledText`, so screens can be rendered to an in-memory buffer and asserted.
+- **Input-intent mapping is a pure function below the seam:** `(KeyEvent, InputState) → Command`, where `InputState` is `{ state, overlay, pageSize }`. It encodes the state-gated input rule and the delete-mode resolution; it never touches OpenTUI. Overlay keys cross the same seam, so there is exactly one input model and the shell interprets no keys. This keeps the correctness-critical decision logic testable.
+- **View mapping is pure, in two stages.** View mappers (`*_view.ts`) emit **Styled Rows** — `Row[]`, each **Span** carrying color *intent* (a **Role**, or a continuous `heat`), never a color. `composeFrame(ViewState) → Frame` assembles the whole screen as one `Row[]` per pane. Both are pure and colour-free, so any screen can be asserted as plain data without a TTY. The shell's **Paint** adapter resolves intent to `RGBA` in the active **Palette** — the single place terminal colour is realized. See ADR-0001 and ADR-0002.
 - **Storage is an injected port:** the store logic depends on a read/write-JSON interface, not `fs` directly. Real app injects a file adapter; tests inject an in-memory fake.
 
 ### Session engine (exact behavior)
@@ -152,7 +157,9 @@ The value of frank_type is its timing/metrics engine; tuiper preserves that exac
 
 ### Keymap and input mode
 - Keys: `Tab` next excerpt · `Esc` restart run / close overlay · `?` help · `1`/`2`/`3` duration 15/30/60 · `c` cycle category · `t` theme · `l` locale · `p` profile · `s` sources · `q`/`Ctrl-C` quit · `Backspace` delete char · `Ctrl/Alt-Backspace` delete word · `Ctrl-U` delete to line start.
-- **State-gated input** (pure `(KeyEvent, sessionState) → Command`):
+  - **Not yet implemented:** `Esc` *restart run*. Esc closes an overlay; outside one it currently maps to `none`, and duration re-selection stays gated to Ready because a finished run has no restart to re-run. Deferred, not dropped.
+- **State-gated input** (pure `(KeyEvent, InputState) → Command`):
+  - **Overlay up:** keys never reach the session. Ctrl-C quits; nav keys scroll a scrollable overlay (help, sources); anything else dismisses it.
   - **Ready / Finished:** hotkeys live.
   - **Active run:** every printable key is typed input; only control keys command (`Esc`, `Tab`, Backspace-family, `Ctrl-C`, `Ctrl-U`). `?` mid-run is input, not help.
 
@@ -187,11 +194,11 @@ The value of frank_type is its timing/metrics engine; tuiper preserves that exac
 
 **Level 1 — Engine golden-value unit tests (primary).** TDD every ported module: `metrics` (wpm/rawWpm/accuracy/mistakes/completion), digraph summarization (against the fixed constants and filters), `session_state` lifecycle (start-on-first-key, elapsed excluding pause, auto-finish, deletion effects), `speed_band` (5-session average → band, cold-start slow), `race_progress` (clamped ratios), `deletion` (char/word/to-line-start counts), `text_normalizer` (EN→ASCII, pt-BR preserved, NFC+lowercase), and `session_store` compaction (30/90/120 caps, weighted daily summaries). Where frank_type has existing JS tests, port them verbatim; otherwise hand-derive expected values from the formulas.
 
-**Level 1 — Input-intent mapping unit tests.** The pure `(KeyEvent, sessionState) → Command` function is correctness-critical (it decides whether a key types or commands). Golden-test the state-gated rule in every state (Ready/Finished vs Active), the delete-mode resolution, kitty vs. legacy Backspace disambiguation, and paste rejection.
+**Level 1 — Input-intent mapping unit tests.** The pure `(KeyEvent, InputState) → Command` function is correctness-critical (it decides whether a key types or commands). Golden-test the state-gated rule in every state (Overlay vs Ready/Finished vs Active), the delete-mode resolution, kitty vs. legacy Backspace disambiguation, release/repeat filtering, and paste rejection.
 
-**Level 2 — View snapshot tests.** Render key screens (typing surface with mixed correct/wrong/pending, heat-map overlay, race strip, braille charts) to an in-memory `OptimizedBuffer` and snapshot the cell grid (characters + colors). Buffer read-back was proven headless in the spike. Catches layout/color regressions without a real TTY.
+**Level 2 — View snapshot tests.** Assert screens as **Styled Rows** — the plain data the view seam emits. Per-mapper tests cover each panel's text and roles; `composeFrame` fixtures cover whole screens (ready, active, finished, each overlay, terminal-too-small). Colour resolution is tested separately at the **Paint** adapter (role → `RGBA`, heat gradient, 256-colour fallback). No `OptimizedBuffer` read-back and no TTY is involved: because the seam is colour-free data, a plain-object assertion is strictly easier to write and read than a cell-grid snapshot.
 
-**Level 3 — Headless integration smoke tests (few).** Boot `createCliRenderer` headless, inject a synthetic keypress sequence, and assert on the resulting stored session (via the in-memory storage fake) and/or the final buffer. A handful, covering the end-to-end path key → engine → store → render.
+**Level 3 — End-to-end smoke test (one, above the seam).** Drive the *real* app in a pseudo-terminal (`node-pty`/ConPTY), feed a scripted keystroke sequence, and assert on the rendered frames — boot, the hotkey tour, each overlay, typing, results, clean exit. This is the only test that exercises `src/shell/app.ts`, and it is what holds behaviour byte-for-byte across refactors. Lives in the `verify` skill rather than `bun test`, since it needs Node and a real PTY.
 
 **Level 4 — Manual / interactive probe (not automated).** Keep an interactive harness for the genuinely un-unit-testable residue: flicker, real-terminal truecolor, live timing feel, and kitty-vs-legacy behavior across terminals (tmux, ssh, Windows Terminal). Run the app directly (`bun run index.ts`) in a real terminal; the automated slice of this is the `verify` skill.
 

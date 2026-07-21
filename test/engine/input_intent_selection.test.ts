@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { mapKeyToCommand } from "../../src/engine/input_intent";
+import { mapKeyToCommand as mapKey } from "../../src/engine/input_intent";
 import { createSession, finish, typeChar } from "../../src/engine/session_state";
+import type { SessionState } from "../../src/engine/session_state";
+import type { KeyEvent } from "../../src/engine/key_event";
+import type { Command } from "../../src/engine/command";
 import { key } from "../support/key_event";
+// Session-only wrapper: these cases predate the overlay branch of the seam, so
+// they always map with no overlay up. Overlay keys are covered in
+// input_intent_overlay.test.ts.
+const mapKeyToCommand = (key: KeyEvent, state: SessionState): Command =>
+  mapKey(key, { state, overlay: null, pageSize: 19 });
 
 // Excerpt-selection intents added for #5: Tab loads the next excerpt (a control
 // key, live in every state), `c` cycles the category (a Ready/Finished hotkey

@@ -17,7 +17,7 @@ import {
 import { visualLineStartIndex } from "../engine/typing_view";
 import { buildResult } from "../engine/session_result";
 import { composeFrame, overlayScrollMax, type ViewState } from "../engine/frame";
-import { isScrollableOverlay, type Overlay } from "../engine/overlay";
+import type { Overlay } from "../engine/overlay";
 import { preferredSpeedBand, randomExcerptIndex } from "../engine/speed_band";
 import { excerptsForLocale, type Excerpt } from "../corpus/corpus";
 import { SessionStore } from "../storage/session_store";
@@ -48,24 +48,6 @@ const CATEGORIES = ["random", "scifi", "fantasy", "biography"] as const;
 function nextCategory(current: string): string {
   const i = CATEGORIES.indexOf(current as (typeof CATEGORIES)[number]);
   return CATEGORIES[(i + 1) % CATEGORIES.length]!;
-}
-
-/** Signed scroll step a key requests within a scrollable overlay (0 = none). */
-function scrollDelta(key: OpenTuiKeyEvent, page: number): number {
-  switch (key.name) {
-    case "up":
-      return -1;
-    case "down":
-      return 1;
-    case "pageup":
-      return -page;
-    case "pagedown":
-      return page;
-    default:
-      if (key.sequence === "k") return -1;
-      if (key.sequence === "j") return 1;
-      return 0;
-  }
 }
 
 const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, n));
@@ -214,38 +196,31 @@ export async function runApp(): Promise<CliRenderer> {
 
   renderer.keyInput.on("keypress", (e: OpenTuiKeyEvent) => {
     const now = performance.now(); // stamp on receipt (input is per-keystroke)
-    // While an overlay is up, keys don't reach the session. Ctrl-C still quits
-    // the app; every other key stays inside the overlay (`q` here closes it, it
-    // does not quit — see the sources/help close hints).
-    if (overlay) {
-      // Ignore kitty release/repeat events — only a fresh press acts, so holding
-      // the key that opened the overlay can't immediately close it.
-      if (e.eventType === "release" || e.eventType === "repeat") return;
-      if (e.ctrl && !e.meta && !e.option && e.name === "c") {
-        cleanup(renderer);
-        return;
-      }
-      // Help and sources scroll: nav keys move the viewport (and are consumed even
-      // when the content fits, so they never close it); Esc/q/any other key closes.
-      // Profile is a fixed layout — any key closes it.
-      if (isScrollableOverlay(overlay)) {
-        const delta = scrollDelta(e, Math.max(1, overlayHeight(renderer.height) - 1));
-        if (delta !== 0) {
-          overlayScroll = clamp(overlayScroll + delta, 0, overlayScrollMax(viewState(now)));
-          draw(now);
-          renderer.requestRender();
-          return;
-        }
-      }
-      overlay = null;
-      overlayScroll = 0;
+    // One input model for every state: the mapper decides whether a key reaches
+    // the session, drives an overlay, or commands the app. `pageSize` is the one
+    // layout fact it can't know (the shell owns the terminal).
+    const cmd = mapKeyToCommand(e, {
+      state,
+      overlay,
+      pageSize: Math.max(1, overlayHeight(renderer.height) - 1),
+    });
+    if (cmd.kind === "quit") {
+      cleanup(renderer);
+      return;
+    }
+    // Overlay control. The scroll offset is clamped here against the overlay's
+    // content length — the mapper emits the intent, the shell resolves it.
+    if (cmd.kind === "scrollOverlay") {
+      overlayScroll = clamp(overlayScroll + cmd.delta, 0, overlayScrollMax(viewState(now)));
       draw(now);
       renderer.requestRender();
       return;
     }
-    const cmd = mapKeyToCommand(e, state);
-    if (cmd.kind === "quit") {
-      cleanup(renderer);
+    if (cmd.kind === "closeOverlay") {
+      overlay = null;
+      overlayScroll = 0;
+      draw(now);
+      renderer.requestRender();
       return;
     }
     if (cmd.kind === "openProfile" || cmd.kind === "openHelp" || cmd.kind === "openSources") {

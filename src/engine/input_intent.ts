@@ -28,7 +28,8 @@ export interface InputState {
 }
 
 export function mapKeyToCommand(key: KeyEvent, input: InputState): Command {
-  // Ignore Kitty key-release events for input (spike gotcha #3).
+  // Ignore Kitty key-release events for input: with `useKittyKeyboard` a single
+  // press also emits `eventType: "release"`, which must never type.
   if (key.eventType === "release") return NONE;
 
   // An overlay swallows every key — the session never sees them.
@@ -49,7 +50,7 @@ export function mapKeyToCommand(key: KeyEvent, input: InputState): Command {
     // start. In kitty mode Ctrl-Backspace carries `ctrl` and Alt-Backspace
     // `meta`/`option`, so they're distinguishable from plain Backspace; in
     // legacy mode both collapse to plain Backspace, so Ctrl-W is the
-    // delete-word fallback (spike gotcha #1). `c` here is typed input, not a
+    // delete-word fallback. `c` here is typed input, not a
     // category hotkey — mid-run every printable types.
     if (isBackspace(key)) {
       return hasDeleteModifier(key) ? { kind: "deleteWord" } : { kind: "deleteChar" };

@@ -4,7 +4,7 @@ Terminal (TUI) typing trainer — a faithful clone of [frank_type](https://githu
 
 **Stack:** TypeScript on **Bun**, TUI via **OpenTUI** (`@opentui/core`). Local-first — no server, no accounts, no network. History/prefs in local JSON.
 
-**Design source of truth:** `docs/PRD.md` (problem, 54 user stories, exact metric/digraph/band/race formulas, seam design, test plan). OpenTUI runtime validation: `prototype-spike/NOTES.md` (throwaway; deletable once absorbed).
+**Design source of truth:** `docs/PRD.md` (problem, 54 user stories, exact metric/digraph/band/race formulas, seam design, test plan). It records the *original* design — `docs/adr/` records what changed since. OpenTUI's runtime behavior was validated by a throwaway spike whose findings live in the PRD ("Input handling"); the spike itself is gone, and the `verify` skill now exercises the real app instead.
 
 ## Architecture
 

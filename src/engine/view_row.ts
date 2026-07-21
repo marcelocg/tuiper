@@ -91,8 +91,10 @@ function clipRow(row: Row, width: number): Row {
   return out;
 }
 
-/** The plain text of each row (span texts concatenated) — the text-only
- *  projection used by text snapshots and the ConPTY smoke harness. */
+/** The plain text of each row (span texts concatenated). A projection for
+ *  assertions — it reads content while ignoring roles, so a test can check text
+ *  and color intent separately. Test-only today; it is deliberately NOT a second
+ *  rendering adapter (see docs/adr/0002-row-list-as-the-view-seam.md). */
 export function rowsText(rows: readonly Row[]): string[] {
   return rows.map((row) => row.map((s) => s.text).join(""));
 }

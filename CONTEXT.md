@@ -11,7 +11,9 @@ below.
 **Styled Row** — the unit the pure view mappers emit across the view seam: one screen
 line as a list of **Span**s. Replaces the older bare `string[]` / scalar `string`
 outputs so that color intent is decided below the seam (where it is snapshot-tested),
-not re-derived in the shell. Lives in `src/engine/view_row.ts`.
+not re-derived in the shell. Lives in `src/engine/view_row.ts`. `Row[]` *is* the
+seam — see [ADR-0002](docs/adr/0002-row-list-as-the-view-seam.md), which records
+why it is kept despite **Paint** having only one adapter.
 
 **Span** — a run of text carrying its color intent, never a concrete color. Two arms:
 a discrete `{ text, role: Role }` or a continuous `{ text, heat: number }` (the digraph
